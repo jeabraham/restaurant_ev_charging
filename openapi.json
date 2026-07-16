@@ -4,6 +4,11 @@
     "title": "Restaurant EV Charging API",
     "version": "1.0.0"
   },
+  "servers": [
+    {
+      "url": "https://web-production-1f8a2.up.railway.app"
+    }
+  ],
   "paths": {
     "/find-dining-chargers": {
       "post": {
