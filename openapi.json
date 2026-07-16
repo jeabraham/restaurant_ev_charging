@@ -56,7 +56,21 @@
                               "latitude": { "type": "number" },
                               "longitude": { "type": "number" },
                               "website": { "type": "string", "nullable": true },
-                              "google_maps_url": { "type": "string" }
+                              "google_maps_url": { "type": "string" },
+                              "reviews": {
+                                "type": "object",
+                                "description": "Third-party review data. Present only when a matching business was found. Use rating, review_count, cuisine_types, and is_open_now when ranking and recommending restaurants.",
+                                "nullable": true,
+                                "properties": {
+                                  "rating": { "type": "number", "description": "Average rating (e.g. 1–5 for Yelp)." },
+                                  "review_count": { "type": "integer", "description": "Number of reviews." },
+                                  "price_level": { "type": "string", "nullable": true, "description": "Price level indicator, e.g. '$', '$$', '$$$', '$$$$'." },
+                                  "cuisine_types": { "type": "array", "items": { "type": "string" }, "description": "Cuisine or category labels from the review provider." },
+                                  "is_open_now": { "type": "boolean", "nullable": true, "description": "Whether the restaurant is currently open. Null if unknown." },
+                                  "provider_url": { "type": "string", "description": "Direct link to the restaurant's page on the review provider." },
+                                  "provider": { "type": "string", "description": "Review data source, e.g. 'yelp'." }
+                                }
+                              }
                             }
                           },
                           "charger": {

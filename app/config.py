@@ -8,6 +8,7 @@ from dataclasses import dataclass
 class Settings:
     openchargemap_api_key: str
     geoapify_api_key: str
+    yelp_api_key: str
 
 
 _SENTINEL_KEYS = {"", "your_openchargemap_api_key"}
@@ -23,4 +24,5 @@ def load_settings() -> Settings:
     return Settings(
         openchargemap_api_key=ocm_key,
         geoapify_api_key=os.getenv("GEOAPIFY_API_KEY", ""),
+        yelp_api_key=os.getenv("YELP_API_KEY", ""),
     )

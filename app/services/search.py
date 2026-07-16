@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 from typing import Any
@@ -16,6 +17,7 @@ from app.services.filtering import (
     station_is_explicitly_non_operational,
     station_status_value,
 )
+from app.services.reviews import ReviewProvider
 from app.utils.distance import haversine_metres
 from app.utils.urls import (
     google_maps_place_url,
@@ -26,11 +28,26 @@ from app.utils.urls import (
 
 logger = logging.getLogger(__name__)
 
+# Combined ranking weights.  Adjust these if the balance feels wrong.
+# A 5-star restaurant is worth an extra ~300 m walk or ~60 kW of charger power.
+_RATING_WEIGHT = 15.0
+_OPEN_BONUS = 10.0      # confirmed open now
+_CLOSED_PENALTY = 20.0  # confirmed closed now
+_DEFAULT_RATING = 3.0   # used when no review data is available
+_POWER_WEIGHT = 0.3     # kW → score points
+_DISTANCE_COST = 0.05   # metres → score points lost
+
 
 class DiningChargerService:
-    def __init__(self, ocm_client: OpenChargeMapClient, geo_client: GeoapifyClient) -> None:
+    def __init__(
+        self,
+        ocm_client: OpenChargeMapClient,
+        geo_client: GeoapifyClient,
+        review_provider: ReviewProvider | None = None,
+    ) -> None:
         self._ocm_client = ocm_client
         self._geo_client = geo_client
+        self._review_provider = review_provider
 
     async def find(self, payload: FindDiningChargersRequest) -> dict[str, Any]:
         locations = await self._ocm_client.nearby_stations(
@@ -238,6 +255,10 @@ class DiningChargerService:
 
         results = results[: payload.max_results]
 
+        # Enrich with review data and re-rank using combined score.
+        if self._review_provider is not None:
+            results = await self._enrich_and_rerank(results)
+
         warnings: list[str] = []
         if not results:
             warnings.append("No qualifying charger-restaurant pairs were found.")
@@ -284,3 +305,36 @@ class DiningChargerService:
             if locality:
                 return locality
         return None
+
+    async def _enrich_and_rerank(self, results: list[dict]) -> list[dict]:
+        """Fetch review data for each restaurant in parallel and re-sort by combined score."""
+
+        async def enrich_one(item: dict) -> dict:
+            r = item["restaurant"]
+            info = await self._review_provider.lookup(r["name"], r["latitude"], r["longitude"])  # type: ignore[union-attr]
+            if info is not None:
+                item["restaurant"]["reviews"] = {
+                    "rating": info.rating,
+                    "review_count": info.review_count,
+                    "price_level": info.price_level,
+                    "cuisine_types": info.cuisine_types,
+                    "is_open_now": info.is_open_now,
+                    "provider_url": info.provider_url,
+                    "provider": info.provider,
+                }
+            return item
+
+        enriched = list(await asyncio.gather(*[enrich_one(item) for item in results]))
+        enriched.sort(key=lambda item: (-_combined_score(item), item["restaurant"]["name"].lower()))
+        return enriched
+
+
+def _combined_score(item: dict) -> float:
+    """Higher is better.  Balances charger power, restaurant rating, and walking distance."""
+    power_kw = item["charger"]["maximum_power_kw"]
+    distance_m = item["distance"]["straight_line_metres"]
+    reviews = item["restaurant"].get("reviews")
+    rating = reviews["rating"] if reviews else _DEFAULT_RATING
+    is_open_now = reviews.get("is_open_now") if reviews else None
+    open_adjustment = _OPEN_BONUS if is_open_now is True else (-_CLOSED_PENALTY if is_open_now is False else 0.0)
+    return power_kw * _POWER_WEIGHT + rating * _RATING_WEIGHT - distance_m * _DISTANCE_COST + open_adjustment

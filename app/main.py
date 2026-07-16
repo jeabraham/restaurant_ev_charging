@@ -15,9 +15,11 @@ from slowapi.util import get_remote_address
 from app.clients.geoapify import GeoapifyClient
 from app.clients.http import RetryingHttpClient
 from app.clients.openchargemap import OpenChargeMapClient
+from app.clients.yelp import YelpClient
 from app.config import load_settings
 from app.errors import ApiError
 from app.schemas import FindDiningChargersRequest
+from app.services.reviews import YelpReviewProvider
 from app.services.search import DiningChargerService
 
 logging.basicConfig(
@@ -45,7 +47,11 @@ async def lifespan(app: FastAPI):
         retrying_client,
         settings.geoapify_api_key,
     )
-    app.state.dining_service = DiningChargerService(ocm_client, geo_client)
+    review_provider = None
+    if settings.yelp_api_key:
+        yelp_client = YelpClient(retrying_client, settings.yelp_api_key)
+        review_provider = YelpReviewProvider(yelp_client)
+    app.state.dining_service = DiningChargerService(ocm_client, geo_client, review_provider)
 
     try:
         yield

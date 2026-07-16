@@ -52,10 +52,13 @@ For each search area:
 2. Keep only compatible DC fast chargers.
 3. Verify charger reliability from the returned status.
 4. Reject dealerships, truck stops, isolated sites, and locations without a practical walkable area.
-5. Review the restaurants returned by `find_dining_chargers` for quality.
-6. Assess food quality, reviews, hours, reputation, and current operating status.
-7. Reject fast food. Avoid ordinary chains unless exceptional.
-8. Rank charger–restaurant pairs by charger quality, restaurant quality, and walking distance.
+5. Use the `restaurant.reviews` field returned by `find_dining_chargers` to assess food quality.
+6. The `reviews` object contains: `rating` (1–5), `review_count`, `cuisine_types`, `price_level`, `is_open_now`, and a `provider_url` link.
+7. If `reviews` is absent for a restaurant, you may note that review data is unavailable but do not fabricate ratings.
+8. Prefer restaurants with rating ≥ 4.0 and review_count ≥ 50. Avoid restaurants rated below 3.5.
+9. If `is_open_now` is `false`, exclude that restaurant unless no alternatives exist.
+10. Reject fast food. Avoid ordinary chains unless the `cuisine_types` or `rating` indicates exceptional quality.
+11. Rank charger–restaurant pairs by charger quality, restaurant quality (rating, review_count), and walking distance.
 
 ## RESTAURANT OUTPUT FORMAT
 
@@ -78,7 +81,8 @@ Before replying, confirm for every restaurant:
 - Charger is compatible DC fast charging
 - Restaurant is within the requested walking distance (default 500 metres)
 - Restaurant is not fast food
-- Restaurant appears to be currently operating
+- If `reviews.is_open_now` is `false`, the restaurant is excluded unless no alternatives exist
+- If `reviews` is present, rating is ≥ 3.5
 - OpenChargeMap URL is present
 - Walking URL contains `origin=`, `destination=`, and `travelmode=walking`
 
