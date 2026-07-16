@@ -40,7 +40,7 @@ class YelpReviewProvider:
         try:
             business = await self._client.find_business(name, latitude, longitude)
         except Exception:
-            logger.warning("Yelp lookup failed for %r at (%.5f, %.5f)", name, latitude, longitude)
+            logger.warning("Yelp lookup failed for %r", name)
             return None
 
         if business is None:

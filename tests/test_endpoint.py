@@ -159,7 +159,7 @@ async def test_endpoint_enriches_with_yelp_reviews(test_client_with_yelp):
     assert reviews["price_level"] == "$$"
     assert reviews["is_open_now"] is True
     assert reviews["provider"] == "yelp"
-    assert "yelp.com" in reviews["provider_url"]
+    assert reviews["provider_url"] == "https://yelp.com/biz/example-restaurant"
     assert reviews["cuisine_types"] == ["Canadian"]
 
 
