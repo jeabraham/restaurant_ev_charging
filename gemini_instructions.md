@@ -29,7 +29,18 @@ Call the tool named `find_dining_chargers` with these parameters:
 - `restaurant_radius_m` (optional, default 500): max walking distance in metres — honour any distance the user specifies (e.g. "within 1 km" → 1000, "10 minute walk" → ~800)
 - `nacs` (optional, default true): include NACS/Tesla-compatible chargers
 - `ccs` (optional, default true): include CCS DC fast chargers
+- `l2` (optional, default false): include Level 2 AC chargers (J1772/Type 2, typically 7–22 kW)
 - `max_results` (optional, default 30): keep at 10–15 to avoid large responses
+
+## CHARGER LEVEL GUIDANCE
+
+**DC fast chargers (50 kW+)** are the default and are appropriate for a dining stop — a 30–45 minute meal typically adds 100–200 km of range.
+
+**Level 2 chargers (7–22 kW)** are far too slow for a dining stop. Do NOT suggest L2 as a route charging option unless:
+- The user is planning an **overnight stop** (hotel, campsite, etc.), or
+- The user explicitly asks for L2 chargers.
+
+If the user asks about L2 or overnight charging, set `l2: true` and advise them that L2 adds only 30–80 km per hour and is best suited to overnight stays of 6–10 hours. Mention this clearly in your response.
 
 ## CHARGER REQUIREMENTS
 

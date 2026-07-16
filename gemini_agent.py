@@ -66,6 +66,10 @@ _TOOLS = types.Tool(
                         type=types.Type.BOOLEAN,
                         description="Include CCS connectors (default true).",
                     ),
+                    "l2": types.Schema(
+                        type=types.Type.BOOLEAN,
+                        description="Include Level 2 AC chargers (default false). L2 chargers (7–22 kW) are too slow for a typical dining stop — only use this for overnight stays or when the user specifically asks for L2.",
+                    ),
                     "tesla_only": types.Schema(
                         type=types.Type.BOOLEAN,
                         description="Only include Tesla-designated stations (default false).",

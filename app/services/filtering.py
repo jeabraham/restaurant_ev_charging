@@ -5,7 +5,9 @@ from typing import Any
 
 CCS_TYPE_IDS = {32, 33}
 NACS_TYPE_IDS = {30, 31}
+L2_TYPE_IDS = {1, 25}  # J1772 (North America) and IEC 62196 Type 2 (Mennekes)
 FAST_CHARGE_MIN_KW = 50
+L2_MIN_KW = 7
 
 TESLA_ONLY_PATTERN = re.compile(r"(?:tesla[-\s]?only|only tesla|tesla vehicles only)", re.IGNORECASE)
 NON_TESLA_PATTERN = re.compile(
@@ -14,24 +16,35 @@ NON_TESLA_PATTERN = re.compile(
 )
 
 
-def normalize_connector(connection: dict[str, Any], requested_ccs: bool, requested_nacs: bool) -> dict[str, Any] | None:
+def normalize_connector(
+    connection: dict[str, Any],
+    requested_ccs: bool,
+    requested_nacs: bool,
+    requested_l2: bool = False,
+) -> dict[str, Any] | None:
     connection_type = connection.get("ConnectionType") or {}
     title = str(connection_type.get("Title") or "")
     type_id = connection_type.get("ID")
     power_kw = connection.get("PowerKW")
 
-    if power_kw is None or power_kw < FAST_CHARGE_MIN_KW:
+    if power_kw is None or power_kw < L2_MIN_KW:
         return None
 
-    if requested_ccs and (type_id in CCS_TYPE_IDS or "ccs" in title.lower()):
-        return {"type": "CCS", "power_kw": power_kw}
+    is_fast = power_kw >= FAST_CHARGE_MIN_KW
 
-    if requested_nacs and (
-        type_id in NACS_TYPE_IDS
-        or "nacs" in title.lower()
-        or "tesla" in title.lower()
-    ):
-        return {"type": "NACS", "power_kw": power_kw}
+    if is_fast:
+        if requested_ccs and (type_id in CCS_TYPE_IDS or "ccs" in title.lower()):
+            return {"type": "CCS", "level": "DC_FAST", "power_kw": power_kw}
+
+        if requested_nacs and (
+            type_id in NACS_TYPE_IDS
+            or "nacs" in title.lower()
+            or "tesla" in title.lower()
+        ):
+            return {"type": "NACS", "level": "DC_FAST", "power_kw": power_kw}
+
+    if requested_l2 and (type_id in L2_TYPE_IDS or "j1772" in title.lower() or "type 2" in title.lower()):
+        return {"type": "J1772" if (type_id == 1 or "j1772" in title.lower()) else "Type2", "level": "L2", "power_kw": power_kw}
 
     return None
 

@@ -58,7 +58,7 @@ class DiningChargerService:
             for connection in connections:
                 if not isinstance(connection, dict):
                     continue
-                normalized = normalize_connector(connection, payload.ccs, payload.nacs)
+                normalized = normalize_connector(connection, payload.ccs, payload.nacs, payload.l2)
                 if normalized:
                     connector_types.append(normalized)
 

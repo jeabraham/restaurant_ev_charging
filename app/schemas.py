@@ -13,14 +13,15 @@ class FindDiningChargersRequest(BaseModel):
     restaurant_radius_m: int = Field(default=500, gt=0, le=2000)
     nacs: bool = True
     ccs: bool = True
+    l2: bool = False
     tesla_only: bool = False
     max_results: int = Field(default=30, gt=0, le=200)
 
     @model_validator(mode="after")
     def at_least_one_connector(self) -> "FindDiningChargersRequest":
-        if not self.nacs and not self.ccs:
+        if not self.nacs and not self.ccs and not self.l2:
             raise PydanticCustomError(
                 "semantic_error",
-                "At least one of 'nacs' or 'ccs' must be true.",
+                "At least one of 'nacs', 'ccs', or 'l2' must be true.",
             )
         return self
