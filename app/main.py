@@ -8,6 +8,9 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.clients.geoapify import GeoapifyClient
 from app.clients.http import RetryingHttpClient
@@ -23,6 +26,8 @@ logging.basicConfig(
 )
 logging.getLogger("app.services.search").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -53,6 +58,15 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(_: Request, exc: RateLimitExceeded) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={"error": {"code": "RATE_LIMIT_EXCEEDED", "message": str(exc.detail)}},
+    )
 
 
 @app.exception_handler(ApiError)
@@ -108,6 +122,7 @@ async def generic_error_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 @app.post("/find-dining-chargers")
-async def find_dining_chargers(payload: FindDiningChargersRequest) -> dict:
+@limiter.limit("20/minute")
+async def find_dining_chargers(request: Request, payload: FindDiningChargersRequest) -> dict:
     service: DiningChargerService = app.state.dining_service
     return await service.find(payload)
