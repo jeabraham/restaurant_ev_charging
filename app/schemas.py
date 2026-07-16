@@ -14,6 +14,7 @@ class FindDiningChargersRequest(BaseModel):
     nacs: bool = True
     ccs: bool = True
     tesla_only: bool = False
+    max_results: int = Field(default=30, gt=0, le=200)
 
     @model_validator(mode="after")
     def at_least_one_connector(self) -> "FindDiningChargersRequest":

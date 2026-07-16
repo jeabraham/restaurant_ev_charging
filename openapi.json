@@ -13,7 +13,7 @@
     "/find-dining-chargers": {
       "post": {
         "summary": "Find Dining Chargers",
-        "description": "Find EV charging stations that are within walking distance of restaurants. ALWAYS call this action before recommending any charger or restaurant. Use this whenever the user asks about EV charging near restaurants, dining while charging, or charging stops during road trips. Requires a latitude and longitude — geocode the location first if the user provides a city or place name.",
+        "description": "Find EV chargers within walking distance of restaurants. Always call this before recommending any charger or restaurant pair. Use when the user asks about dining while charging or charging stops. Geocode the location if needed.",
         "operationId": "find_dining_chargers_find_dining_chargers_post",
         "requestBody": {
           "content": {
@@ -76,6 +76,19 @@
                               "straight_line_metres": { "type": "number" },
                               "estimated_walking_time_minutes": { "type": "integer" },
                               "google_maps_walking_url": { "type": "string" }
+                            }
+                          },
+                          "other_close_chargers": {
+                            "type": "array",
+                            "description": "Other chargers also within walking distance of this restaurant, sorted by distance. Omitted when none exist.",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": { "type": "string" },
+                                "openchargemap_url": { "type": "string" },
+                                "straight_line_metres": { "type": "number" },
+                                "estimated_walking_time_minutes": { "type": "integer" }
+                              }
                             }
                           }
                         }
@@ -159,6 +172,14 @@
             "title": "Tesla Only",
             "default": false,
             "description": "Restrict results to Tesla Supercharger network only. Overrides nacs and ccs filters when true."
+          },
+          "max_results": {
+            "type": "integer",
+            "maximum": 200,
+            "exclusiveMinimum": 0,
+            "title": "Max Results",
+            "default": 30,
+            "description": "Maximum number of charger-restaurant pairs to return. Keep low (10-15) to avoid response size limits."
           }
         },
         "additionalProperties": false,

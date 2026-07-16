@@ -107,7 +107,9 @@ class DiningChargerService:
                 }
             )
 
-        results = []
+        # Collect all (charger, distance) pairs per unique restaurant.
+        restaurant_chargers: dict[str, dict] = {}
+
         for charger in qualifying_chargers:
             places = await self._geo_client.nearby_food_places(
                 latitude=charger["latitude"],
@@ -116,7 +118,6 @@ class DiningChargerService:
             )
             geoapify_places_received += len(places)
 
-            seen_places: set[str] = set()
             for place in places:
                 props = place.get("properties") or {}
                 place_name = props.get("name", "<no name>")
@@ -129,12 +130,6 @@ class DiningChargerService:
                         place_cats,
                     )
                     continue
-
-                dedupe_key = dedupe_geoapify_place_key(place)
-                if dedupe_key in seen_places:
-                    logger.debug("place deduplicated: name=%r", place_name)
-                    continue
-                seen_places.add(dedupe_key)
 
                 properties = place["properties"]
                 restaurant_lat = properties["lat"]
@@ -158,9 +153,28 @@ class DiningChargerService:
                 if locality:
                     locality_candidates.append(locality)
 
-                website = properties.get("website")
-                results.append(
-                    {
+                dedupe_key = dedupe_geoapify_place_key(place)
+                pair = {
+                    "charger": charger,
+                    "distance": {
+                        "straight_line_metres": straight_line_metres,
+                        "estimated_walking_distance_metres": straight_line_metres,
+                        "estimated_walking_time_minutes": int(
+                            math.ceil(straight_line_metres / 60)
+                        ),
+                        "walking_distance_verified": False,
+                        "google_maps_walking_url": google_maps_walking_url(
+                            charger_lat=charger["latitude"],
+                            charger_lon=charger["longitude"],
+                            restaurant_lat=restaurant_lat,
+                            restaurant_lon=restaurant_lon,
+                        ),
+                    },
+                }
+
+                if dedupe_key not in restaurant_chargers:
+                    website = properties.get("website")
+                    restaurant_chargers[dedupe_key] = {
                         "restaurant": {
                             "name": properties["name"].strip(),
                             "address": properties.get("formatted"),
@@ -172,23 +186,41 @@ class DiningChargerService:
                                 restaurant_lon,
                             ),
                         },
-                        "charger": charger,
-                        "distance": {
-                            "straight_line_metres": straight_line_metres,
-                            "estimated_walking_distance_metres": straight_line_metres,
-                            "estimated_walking_time_minutes": int(
-                                math.ceil(straight_line_metres / 60)
-                            ),
-                            "walking_distance_verified": False,
-                            "google_maps_walking_url": google_maps_walking_url(
-                                charger_lat=charger["latitude"],
-                                charger_lon=charger["longitude"],
-                                restaurant_lat=restaurant_lat,
-                                restaurant_lon=restaurant_lon,
-                            ),
-                        },
+                        "pairs": [pair],
                     }
-                )
+                else:
+                    restaurant_chargers[dedupe_key]["pairs"].append(pair)
+
+        # Build deduplicated results: closest charger is primary, rest go in other_close_chargers.
+        results = []
+        for entry in restaurant_chargers.values():
+            pairs = sorted(
+                entry["pairs"], key=lambda p: p["distance"]["straight_line_metres"]
+            )
+            primary = pairs[0]
+            primary_charger = primary["charger"]
+            result: dict = {
+                "restaurant": entry["restaurant"],
+                "charger": {
+                    k: v
+                    for k, v in primary_charger.items()
+                    if k not in ("connector_types", "latitude", "longitude", "openchargemap_poi_id")
+                },
+                "distance": primary["distance"],
+            }
+            if len(pairs) > 1:
+                result["other_close_chargers"] = [
+                    {
+                        "name": p["charger"]["name"],
+                        "openchargemap_url": p["charger"]["openchargemap_url"],
+                        "straight_line_metres": p["distance"]["straight_line_metres"],
+                        "estimated_walking_time_minutes": p["distance"][
+                            "estimated_walking_time_minutes"
+                        ],
+                    }
+                    for p in pairs[1:]
+                ]
+            results.append(result)
 
         results.sort(
             key=lambda item: (
@@ -197,6 +229,8 @@ class DiningChargerService:
                 item["restaurant"]["name"].lower(),
             )
         )
+
+        results = results[: payload.max_results]
 
         warnings: list[str] = []
         if not results:
