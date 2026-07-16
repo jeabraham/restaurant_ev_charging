@@ -191,11 +191,17 @@ class DiningChargerService:
                 else:
                     restaurant_chargers[dedupe_key]["pairs"].append(pair)
 
-        # Build deduplicated results: closest charger is primary, rest go in other_close_chargers.
+        # Build deduplicated results: best-scoring charger is primary, rest go in other_close_chargers.
+        # Score = power_kw - distance_m * KW_PER_METRE; a faster charger is preferred over a closer
+        # one unless the extra walk costs more than the power gain (0.08 kW/m means a 50 kW DC fast
+        # charger beats a 9 kW L2 even at 500 m; breakeven vs an 11 kW L2 is ~487 m extra walk).
+        KW_PER_METRE = 0.08
         results = []
         for entry in restaurant_chargers.values():
             pairs = sorted(
-                entry["pairs"], key=lambda p: p["distance"]["straight_line_metres"]
+                entry["pairs"],
+                key=lambda p: p["charger"]["maximum_power_kw"] - p["distance"]["straight_line_metres"] * KW_PER_METRE,
+                reverse=True,
             )
             primary = pairs[0]
             primary_charger = primary["charger"]
