@@ -1,4 +1,4 @@
-.PHONY: install run run-agent test
+.PHONY: install run run-agent plan-trip test
 
 VENV := venv
 PYTHON := $(VENV)/bin/python
@@ -16,6 +16,20 @@ run: $(VENV)
 
 run-agent: $(VENV)
 	set -a && . ./setup.env && set +a && $(PYTHON) gemini_agent.py
+
+plan-trip: $(VENV)
+	@set -a && . ./setup.env && set +a; \
+	if nc -z localhost 8000 2>/dev/null; then \
+		echo "Server already running on :8000 — connecting agent to it."; \
+		$(PYTHON) gemini_agent.py; \
+	else \
+		echo "Starting server on :8000..."; \
+		$(VENV)/bin/uvicorn app.main:app & \
+		SERVER_PID=$$!; \
+		trap "kill $$SERVER_PID 2>/dev/null" EXIT INT TERM; \
+		sleep 1; \
+		$(PYTHON) gemini_agent.py; \
+	fi
 
 test: $(VENV)
 	$(VENV)/bin/pytest
