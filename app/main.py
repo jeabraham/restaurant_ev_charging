@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
         settings.geoapify_api_key,
     )
     review_provider = None
-    if settings.yelp_api_key:
+    if settings.enable_reviews and settings.yelp_api_key:
         yelp_client = YelpClient(retrying_client, settings.yelp_api_key)
         review_provider = YelpReviewProvider(yelp_client)
     app.state.dining_service = DiningChargerService(ocm_client, geo_client, review_provider)

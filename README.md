@@ -8,6 +8,7 @@ A FastAPI service and interactive AI agent that finds restaurants within walking
 - Find restaurants within a configurable walking distance of each charger via [Geoapify](https://www.geoapify.com)
 - Interactive natural-language agent powered by Gemini function calling
 - Rate-limited REST API (20 requests/minute per IP) with OpenAPI schema
+- Optional restaurant review enrichment (ratings, price, open-now) via Yelp Fusion
 
 ## Requirements
 
@@ -15,6 +16,7 @@ A FastAPI service and interactive AI agent that finds restaurants within walking
 - [OpenChargeMap API key](https://openchargemap.org/site/develop#api)
 - [Geoapify API key](https://www.geoapify.com)
 - [Gemini API key](https://aistudio.google.com/app/apikey) — only needed for the AI agent
+- [Yelp Fusion API key](https://docs.developer.yelp.com/docs/fusion-intro) — **optional**; enriches results with ratings, price levels, and open-now status. Yelp Fusion is a **commercial API** (paid plan required). Leave `YELP_API_KEY` blank to run without review data.
 
 ## Setup
 
@@ -91,6 +93,17 @@ make test
 
 The schema is suitable for use as a ChatGPT Action or similar tool-calling integration.
 
+## Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `OPENCHARGEMAP_API_KEY` | Yes | [OpenChargeMap](https://openchargemap.org/site/develop#api) API key |
+| `GEOAPIFY_API_KEY` | Yes | [Geoapify](https://www.geoapify.com) API key |
+| `GEMINI_API_KEY` | Agent only | [Gemini](https://aistudio.google.com/app/apikey) API key (required only for the CLI agent) |
+| `GEMINI_MODEL` | No | Gemini model name (default: `gemini-2.5-flash-lite`) |
+| `YELP_API_KEY` | No | [Yelp Fusion](https://docs.developer.yelp.com/docs/fusion-intro) API key. **Yelp Fusion is a commercial (paid) API.** Leave blank to run without review enrichment. |
+| `ENABLE_REVIEWS` | No | Set to `false` (or `0` / `no`) to disable review enrichment even when `YELP_API_KEY` is configured. Defaults to `true`. |
+
 ## Deploy to Railway
 
 1. Push this repo to GitHub.
@@ -98,6 +111,8 @@ The schema is suitable for use as a ChatGPT Action or similar tool-calling integ
 3. Add environment variables in the Railway project settings:
    - `OPENCHARGEMAP_API_KEY`
    - `GEOAPIFY_API_KEY`
+   - `YELP_API_KEY` *(optional — Yelp Fusion is a commercial API; omit to run without reviews)*
+   - `ENABLE_REVIEWS=false` *(optional — add this to disable review enrichment entirely)*
 4. Railway detects the `Procfile` and deploys automatically. Your public HTTPS URL appears in the dashboard.
 
 ## Security notes
