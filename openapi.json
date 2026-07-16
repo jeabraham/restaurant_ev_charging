@@ -13,6 +13,7 @@
     "/find-dining-chargers": {
       "post": {
         "summary": "Find Dining Chargers",
+        "description": "Find EV charging stations that are within walking distance of restaurants. ALWAYS call this action before recommending any charger or restaurant. Use this whenever the user asks about EV charging near restaurants, dining while charging, or charging stops during road trips. Requires a latitude and longitude — geocode the location first if the user provides a city or place name.",
         "operationId": "find_dining_chargers_find_dining_chargers_post",
         "requestBody": {
           "content": {
@@ -30,9 +31,65 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
                   "type": "object",
-                  "title": "Response Find Dining Chargers Find Dining Chargers Post"
+                  "properties": {
+                    "search": {
+                      "type": "object",
+                      "properties": {
+                        "latitude": { "type": "number" },
+                        "longitude": { "type": "number" },
+                        "radius_km": { "type": "number" },
+                        "restaurant_radius_m": { "type": "integer" }
+                      }
+                    },
+                    "search_location": { "type": "string", "nullable": true },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "restaurant": {
+                            "type": "object",
+                            "properties": {
+                              "name": { "type": "string" },
+                              "address": { "type": "string", "nullable": true },
+                              "latitude": { "type": "number" },
+                              "longitude": { "type": "number" },
+                              "website": { "type": "string", "nullable": true },
+                              "google_maps_url": { "type": "string" }
+                            }
+                          },
+                          "charger": {
+                            "type": "object",
+                            "properties": {
+                              "name": { "type": "string" },
+                              "network": { "type": "string", "nullable": true },
+                              "maximum_power_kw": { "type": "number" },
+                              "status": { "type": "string" },
+                              "compatibility_notes": { "type": "string", "nullable": true },
+                              "openchargemap_url": { "type": "string" }
+                            }
+                          },
+                          "distance": {
+                            "type": "object",
+                            "properties": {
+                              "straight_line_metres": { "type": "number" },
+                              "estimated_walking_time_minutes": { "type": "integer" },
+                              "google_maps_walking_url": { "type": "string" }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "diagnostics": {
+                      "type": "object",
+                      "properties": {
+                        "qualifying_chargers": { "type": "integer" },
+                        "qualifying_restaurant_charger_pairs": { "type": "integer" },
+                        "warnings": { "type": "array", "items": { "type": "string" } }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -59,42 +116,49 @@
             "type": "number",
             "maximum": 90.0,
             "minimum": -90.0,
-            "title": "Latitude"
+            "title": "Latitude",
+            "description": "Latitude of the search centre in decimal degrees. Geocode the user's location if they provided a city or place name."
           },
           "longitude": {
             "type": "number",
             "maximum": 180.0,
             "minimum": -180.0,
-            "title": "Longitude"
+            "title": "Longitude",
+            "description": "Longitude of the search centre in decimal degrees. Geocode the user's location if they provided a city or place name."
           },
           "radius_km": {
             "type": "number",
             "maximum": 100.0,
             "exclusiveMinimum": 0.0,
             "title": "Radius Km",
-            "default": 10
+            "default": 10,
+            "description": "Search radius in kilometres around the centre point. Default 10 km is suitable for a town; increase for rural areas."
           },
           "restaurant_radius_m": {
             "type": "integer",
             "maximum": 2000.0,
             "exclusiveMinimum": 0.0,
             "title": "Restaurant Radius M",
-            "default": 500
+            "default": 500,
+            "description": "Maximum walking distance in metres between a charger and a restaurant. Default 500 m (~6 min walk)."
           },
           "nacs": {
             "type": "boolean",
             "title": "Nacs",
-            "default": true
+            "default": true,
+            "description": "Include NACS (North American Charging Standard / Tesla-compatible) chargers."
           },
           "ccs": {
             "type": "boolean",
             "title": "Ccs",
-            "default": true
+            "default": true,
+            "description": "Include CCS (Combined Charging System) DC fast chargers."
           },
           "tesla_only": {
             "type": "boolean",
             "title": "Tesla Only",
-            "default": false
+            "default": false,
+            "description": "Restrict results to Tesla Supercharger network only. Overrides nacs and ccs filters when true."
           }
         },
         "additionalProperties": false,
