@@ -152,6 +152,7 @@ activemq-data/
 .envrc
 .venv
 setup.env
+.claude/
 env/
 venv/
 ENV/
