@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import sys
 
 from google import genai
 from google.genai import types
 import httpx
+
+_INSTRUCTIONS_PATH = pathlib.Path(__file__).parent / "gemini_instructions.md"
 
 API_URL = os.getenv("RESTAURANT_EV_API_URL", "http://127.0.0.1:8000")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
@@ -113,9 +116,13 @@ def main() -> None:
         sys.exit("GEOAPIFY_API_KEY is not set. Add it to setup.env and restart.")
 
     client = genai.Client(api_key=gemini_key)
+    system_instruction = _INSTRUCTIONS_PATH.read_text()
     chat = client.chats.create(
         model=GEMINI_MODEL,
-        config=types.GenerateContentConfig(tools=[_TOOLS]),
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            tools=[_TOOLS],
+        ),
     )
 
     print(f"Gemini EV dining agent ({GEMINI_MODEL}). Ask about EV chargers and nearby restaurants.")
