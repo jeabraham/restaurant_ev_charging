@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any
 
@@ -21,6 +22,9 @@ from app.utils.urls import (
     google_maps_walking_url,
     openchargemap_details_url,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class DiningChargerService:
@@ -114,11 +118,21 @@ class DiningChargerService:
 
             seen_places: set[str] = set()
             for place in places:
+                props = place.get("properties") or {}
+                place_name = props.get("name", "<no name>")
+                place_cats = props.get("categories", [])
+
                 if not is_qualifying_place(place):
+                    logger.debug(
+                        "place rejected by is_qualifying_place: name=%r categories=%s",
+                        place_name,
+                        place_cats,
+                    )
                     continue
 
                 dedupe_key = dedupe_geoapify_place_key(place)
                 if dedupe_key in seen_places:
+                    logger.debug("place deduplicated: name=%r", place_name)
                     continue
                 seen_places.add(dedupe_key)
 
@@ -132,6 +146,12 @@ class DiningChargerService:
                     restaurant_lon,
                 )
                 if straight_line_metres > payload.restaurant_radius_m:
+                    logger.debug(
+                        "place rejected by distance: name=%r distance_m=%.1f limit_m=%d",
+                        place_name,
+                        straight_line_metres,
+                        payload.restaurant_radius_m,
+                    )
                     continue
 
                 locality = self._locality_from_geoapify(properties)

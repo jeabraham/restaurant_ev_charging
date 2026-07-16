@@ -18,19 +18,10 @@ class GeoapifyClient:
         longitude: float,
         radius_m: int,
     ) -> list[dict[str, Any]]:
-        categories = ",".join(
-            [
-                "catering.restaurant",
-                "catering.cafe",
-                "catering.pub",
-                "catering.bar",
-                "catering",
-            ]
-        )
         params = {
+            "categories": "catering",
             "filter": f"circle:{longitude},{latitude},{radius_m}",
             "bias": f"proximity:{longitude},{latitude}",
-            "categories": categories,
             "limit": 200,
             "apiKey": self._api_key,
         }

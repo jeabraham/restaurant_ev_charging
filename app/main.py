@@ -21,6 +21,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+logging.getLogger("app.services.search").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 

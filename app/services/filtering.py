@@ -98,15 +98,4 @@ def is_qualifying_place(place: dict[str, Any]) -> bool:
         return False
 
     categories = properties.get("categories") or []
-    category_set = set(categories)
-    disallowed = {"catering.fast_food", "catering.food_court"}
-    if category_set and category_set.issubset(disallowed):
-        return False
-
-    allowed_prefixes = (
-        "catering.restaurant",
-        "catering.cafe",
-        "catering.pub",
-        "catering.bar",
-    )
-    return any(str(category).startswith(allowed_prefixes) for category in categories)
+    return any(str(category).startswith("catering") for category in categories)
