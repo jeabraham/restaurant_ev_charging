@@ -1,14 +1,21 @@
 .PHONY: install run run-agent test
 
-install:
-	python3 -m pip install --upgrade pip
-	python3 -m pip install -e .[dev]
+VENV := venv
+PYTHON := $(VENV)/bin/python
+PIP := $(VENV)/bin/pip
 
-run:
-	set -a && . ./setup.env && set +a && uvicorn app.main:app --reload
+$(VENV):
+	python3 -m venv $(VENV)
+	$(PIP) install --upgrade pip
+	$(PIP) install -e ".[dev,ai]"
 
-run-agent:
-	set -a && . ./setup.env && set +a && python gemini_agent.py
+install: $(VENV)
 
-test:
-	pytest
+run: $(VENV)
+	set -a && . ./setup.env && set +a && $(VENV)/bin/uvicorn app.main:app --reload
+
+run-agent: $(VENV)
+	set -a && . ./setup.env && set +a && $(PYTHON) gemini_agent.py
+
+test: $(VENV)
+	$(VENV)/bin/pytest
