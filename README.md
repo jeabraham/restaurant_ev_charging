@@ -10,7 +10,7 @@ Production-ready FastAPI service that finds restaurants near compatible DC fast-
 
 ## Environment variables
 
-Copy `.env.example` and set:
+Copy `setup_example.env` to `setup.env` and set:
 
 - `OPENCHARGEMAP_API_KEY`
 - `GEOAPIFY_API_KEY`
@@ -20,8 +20,8 @@ Do not commit secrets.
 ## Install
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+python -m venv venv
+source venv/bin/activate
 pip install -e .[dev]
 ```
 
