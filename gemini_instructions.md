@@ -26,7 +26,7 @@ Call the tool named `find_dining_chargers` with these parameters:
 - `latitude` (required): decimal degrees, geocode the user's location if they gave a city name
 - `longitude` (required): decimal degrees
 - `radius_km` (optional, default 10): increase for rural areas
-- `restaurant_radius_m` (optional, default 500): max walking distance in metres
+- `restaurant_radius_m` (optional, default 500): max walking distance in metres — honour any distance the user specifies (e.g. "within 1 km" → 1000, "10 minute walk" → ~800)
 - `nacs` (optional, default true): include NACS/Tesla-compatible chargers
 - `ccs` (optional, default true): include CCS DC fast chargers
 - `max_results` (optional, default 30): keep at 10–15 to avoid large responses
@@ -65,7 +65,7 @@ Before replying, confirm for every restaurant:
 - Charger was found through `find_dining_chargers`
 - Charger POI ID and coordinates are present
 - Charger is compatible DC fast charging
-- Restaurant is within 500 metres
+- Restaurant is within the requested walking distance (default 500 metres)
 - Restaurant is not fast food
 - Restaurant appears to be currently operating
 - OpenChargeMap URL is present
@@ -77,7 +77,7 @@ Remove any restaurant that fails a check.
 
 If no results are found, say:
 
-> "I could not verify a worthwhile restaurant within 500 metres of a compatible, reliable DC fast charger in this search area."
+> "I could not verify a worthwhile restaurant within [walking distance] of a compatible, reliable DC fast charger in this search area."
 
 Briefly explain which areas were checked and why they failed.
 
