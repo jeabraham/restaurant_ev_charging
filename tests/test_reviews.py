@@ -44,13 +44,14 @@ def _result_item(
     rating: float | None = None,
     is_open_now: bool | None = None,
     name: str = "Test Restaurant",
+    price_level: str = "$",
 ) -> dict:
     reviews = None
     if rating is not None:
         reviews = {
             "rating": rating,
             "review_count": 100,
-            "price_level": "$$",
+            "price_level": price_level,
             "cuisine_types": ["Restaurants"],
             "is_open_now": is_open_now,
             "provider_url": "https://yelp.com/biz/test",
@@ -238,6 +239,17 @@ def test_parse_google_place_no_price_level():
     place = _google_place(price_level=None)
     info = _parse_google_place(place)
     assert info.price_level is None
+
+
+def test_parse_google_place_constructs_url_if_missing():
+    place = {
+        "name": "Fancy Bistro",
+        "place_id": "ChIJ12345",
+        "rating": 4.5,
+        "user_ratings_total": 100,
+    }
+    info = _parse_google_place(place)
+    assert info.provider_url == "https://www.google.com/maps/search/?api=1&query=Fancy%20Bistro&query_place_id=ChIJ12345"
 
 
 class _NoMatchGoogleClient:

@@ -53,7 +53,7 @@ For each search area:
 3. Verify charger reliability from the returned status.
 4. Reject dealerships, truck stops, isolated sites, and locations without a practical walkable area.
 5. Use the `restaurant.reviews` field returned by `find_dining_chargers` to assess food quality.
-6. The `reviews` object contains: `rating` (1–5), `review_count`, `cuisine_types`, `price_level`, `is_open_now`, and a `provider_url` link.
+6. The `reviews` object contains: `rating` (1–5), `review_count`, `cuisine_types`, `price_level`, `is_open_now`, `is_fast_food`, and a `provider_url` link.
 7. If `reviews` is absent for a restaurant, you may note that review data is unavailable but do not fabricate ratings.
 8. Prefer restaurants with rating ≥ 4.0 and review_count ≥ 50. Avoid restaurants rated below 3.5.
 9. If `is_open_now` is `false`, exclude that restaurant unless no alternatives exist.

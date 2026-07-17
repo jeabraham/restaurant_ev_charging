@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -19,6 +20,7 @@ class ReviewInfo:
     is_open_now: bool | None  # None means unknown
     provider_url: str
     provider: str
+    is_fast_food: bool = False
 
 
 class ReviewProvider(Protocol):
@@ -60,6 +62,13 @@ def _parse_review_info(business: dict[str, Any]) -> ReviewInfo:
     is_closed = business.get("is_closed")
     is_open_now: bool | None = (not is_closed) if is_closed is not None else None
 
+    # Detect fast food from Yelp categories.
+    is_fast_food = any(
+        cat.get("alias") == "fastfood" or "fast food" in cat.get("title", "").lower()
+        for cat in (business.get("categories") or [])
+        if isinstance(cat, dict)
+    )
+
     return ReviewInfo(
         rating=float(business.get("rating") or 0.0),
         review_count=int(business.get("review_count") or 0),
@@ -68,6 +77,7 @@ def _parse_review_info(business: dict[str, Any]) -> ReviewInfo:
         is_open_now=is_open_now,
         provider_url=business.get("url", ""),
         provider="yelp",
+        is_fast_food=is_fast_food,
     )
 
 
@@ -122,11 +132,22 @@ def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
     is_open_now: bool | None = open_now_raw if isinstance(open_now_raw, bool) else None
 
     types = place.get("types") or []
+    is_fast_food = "fast_food_restaurant" in types
+
     cuisine_types = [
         t.replace("_", " ").title()
         for t in types
         if isinstance(t, str) and t not in _GOOGLE_GENERIC_TYPES
     ]
+
+    name = place.get("name", "")
+    place_id = place.get("place_id")
+    provider_url = place.get("url")
+    if not provider_url and place_id:
+        # Construct a Google Maps search URL using the place_id.
+        # We include the name as well for better compatibility/display.
+        encoded_name = urllib.parse.quote(name)
+        provider_url = f"https://www.google.com/maps/search/?api=1&query={encoded_name}&query_place_id={place_id}"
 
     return ReviewInfo(
         rating=float(place.get("rating") or 0.0),
@@ -134,6 +155,7 @@ def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
         price_level=price_level,
         cuisine_types=cuisine_types,
         is_open_now=is_open_now,
-        provider_url=place.get("url", ""),
+        provider_url=provider_url or "",
         provider="google",
+        is_fast_food=is_fast_food,
     )

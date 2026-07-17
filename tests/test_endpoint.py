@@ -271,12 +271,12 @@ async def test_endpoint_enriches_with_google_reviews(test_client_with_google):
             json={
                 "candidates": [
                     {
+                        "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
                         "name": "Example Restaurant",
                         "rating": 4.2,
                         "user_ratings_total": 180,
                         "price_level": 2,
                         "opening_hours": {"open_now": True},
-                        "url": "https://maps.google.com/?cid=1234",
                         "types": ["canadian_restaurant", "restaurant", "food", "establishment"],
                     }
                 ],
@@ -300,5 +300,5 @@ async def test_endpoint_enriches_with_google_reviews(test_client_with_google):
     assert reviews["price_level"] == "$$"
     assert reviews["is_open_now"] is True
     assert reviews["provider"] == "google"
-    assert reviews["provider_url"] == "https://maps.google.com/?cid=1234"
+    assert reviews["provider_url"] == "https://www.google.com/maps/search/?api=1&query=Example%20Restaurant&query_place_id=ChIJN1t_tDeuEmsRUsoyG83frY4"
     assert "Canadian Restaurant" in reviews["cuisine_types"]

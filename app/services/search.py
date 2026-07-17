@@ -36,6 +36,8 @@ _CLOSED_PENALTY = 20.0  # confirmed closed now
 _DEFAULT_RATING = 3.0   # used when no review data is available
 _POWER_WEIGHT = 0.3     # kW → score points
 _DISTANCE_COST = 0.05   # metres → score points lost
+_FAST_FOOD_PENALTY = 30.0  # Penalty for fast food restaurants
+_PRICE_BONUS = 5.0      # Bonus per price level above "$"
 
 
 class DiningChargerService:
@@ -321,6 +323,7 @@ class DiningChargerService:
                     "is_open_now": info.is_open_now,
                     "provider_url": info.provider_url,
                     "provider": info.provider,
+                    "is_fast_food": info.is_fast_food,
                 }
             return item
 
@@ -337,4 +340,23 @@ def _combined_score(item: dict) -> float:
     rating = reviews["rating"] if reviews else _DEFAULT_RATING
     is_open_now = reviews.get("is_open_now") if reviews else None
     open_adjustment = _OPEN_BONUS if is_open_now is True else (-_CLOSED_PENALTY if is_open_now is False else 0.0)
-    return power_kw * _POWER_WEIGHT + rating * _RATING_WEIGHT - distance_m * _DISTANCE_COST + open_adjustment
+
+    fast_food_penalty = 0.0
+    price_bonus = 0.0
+    if reviews:
+        if reviews.get("is_fast_food"):
+            fast_food_penalty = _FAST_FOOD_PENALTY
+
+        price_level = reviews.get("price_level") or "$"
+        # Price level bonus: $$ -> 1, $$$ -> 2, $$$$ -> 3
+        price_val = len(price_level) - 1
+        price_bonus = price_val * _PRICE_BONUS
+
+    return (
+        power_kw * _POWER_WEIGHT
+        + rating * _RATING_WEIGHT
+        - distance_m * _DISTANCE_COST
+        + open_adjustment
+        - fast_food_penalty
+        + price_bonus
+    )

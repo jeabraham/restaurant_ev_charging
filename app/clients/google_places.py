@@ -9,7 +9,7 @@ from app.errors import UpstreamHttpError
 logger = logging.getLogger(__name__)
 
 _FIND_PLACE_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
-_FIND_PLACE_FIELDS = "name,rating,user_ratings_total,price_level,opening_hours,url,types"
+_FIND_PLACE_FIELDS = "place_id,name,rating,user_ratings_total,price_level,opening_hours,types"
 _MATCH_RADIUS_M = 200
 
 
