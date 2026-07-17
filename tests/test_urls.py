@@ -2,11 +2,21 @@ from app.utils.urls import (
     google_maps_place_url,
     google_maps_walking_url,
     openchargemap_details_url,
+    plugshare_google_search_url,
 )
 
 
 def test_openchargemap_details_url():
     assert openchargemap_details_url(123456) == "https://openchargemap.io/poi/details/123456"
+
+
+def test_plugshare_google_search_url():
+    url = plugshare_google_search_url("Walmart Supercenter", "Spokane", "Electrify America")
+    assert "https://www.google.com/search?q=" in url
+    assert "site%3Aplugshare.com%2Flocation" in url
+    assert "Walmart+Supercenter" in url
+    assert "Spokane" in url
+    assert "Electrify+America" in url
 
 
 def test_google_maps_urls():

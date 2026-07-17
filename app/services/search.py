@@ -24,6 +24,7 @@ from app.utils.urls import (
     google_maps_place_url,
     google_maps_walking_url,
     openchargemap_details_url,
+    plugshare_google_search_url,
 )
 
 
@@ -112,10 +113,15 @@ class DiningChargerService:
             if locality:
                 locality_candidates.append(locality)
 
+            name = address.get("Title") or "Unknown Charger"
+            city = address.get("Town")
+            network = (station.get("OperatorInfo") or {}).get("Title")
+            plugshare_url = plugshare_google_search_url(name, city, network)
+
             qualifying_chargers.append(
                 {
-                    "name": (address.get("Title") or "Unknown Charger"),
-                    "network": ((station.get("OperatorInfo") or {}).get("Title")),
+                    "name": name,
+                    "network": network,
                     "connector_types": sorted(
                         connector_types,
                         key=lambda connector: (connector["type"], -connector["power_kw"]),
@@ -127,6 +133,7 @@ class DiningChargerService:
                     "compatibility_notes": compatibility_notes,
                     "openchargemap_poi_id": station_id,
                     "openchargemap_url": openchargemap_details_url(station_id),
+                    "plugshare_url": plugshare_url,
                 }
             )
 

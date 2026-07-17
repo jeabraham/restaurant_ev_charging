@@ -36,7 +36,7 @@ _TOOLS = types.Tool(
             name="find_dining_chargers",
             description=(
                 "Find restaurants located near DC fast EV chargers at a given location. "
-                "Returns matched restaurant–charger pairs with straight-line distances. "
+                "Returns matched restaurant–charger pairs with distances, OpenChargeMap URLs, and PlugShare URLs. "
                 "Requires latitude and longitude — use geocode_address first if you only have an address."
             ),
             parameters=types.Schema(

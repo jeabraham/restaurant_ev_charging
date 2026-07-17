@@ -50,16 +50,16 @@ For each search area:
 
 1. Call `find_dining_chargers`.
 2. Keep only compatible DC fast chargers.
-3. Verify charger reliability from the returned status.
+3. Verify charger reliability from the returned status and any available Google reviews for the charger.
 4. Reject dealerships, truck stops, isolated sites, and locations without a practical walkable area.
 5. Use the `restaurant.reviews` field returned by `find_dining_chargers` to assess food quality.
 6. The `reviews` object contains: `rating` (1–5), `review_count`, `cuisine_types`, `price_level`, `is_open_now`, `is_fast_food`, and a `provider_url` link.
-7. If `reviews` is absent for a restaurant, you may note that review data is unavailable but do not fabricate ratings.
+7. If `reviews` is absent for a restaurant or charger, you may note that review data is unavailable but do not fabricate ratings.
 8. Prefer restaurants with rating ≥ 4.0 and review_count ≥ 50. Avoid restaurants rated below 3.5.
 9. If `is_open_now` is `false`, exclude that restaurant unless no alternatives exist.
 10. STRICTLY REJECT fast food and national/regional chains (e.g., Denny's, White Spot, Starbucks, A&W, McDonald's, Boston Pizza). Do NOT recommend them even if they have high ratings or are the only option within walking distance.
 11. Prioritize unique, local, or high-quality independent restaurants.
-12. Rank charger–restaurant pairs by charger quality, restaurant quality (rating, review_count), and walking distance.
+12. Rank charger–restaurant pairs by charger quality (reliability, Google rating), restaurant quality (rating, review_count), and walking distance.
 
 ## RESTAURANT OUTPUT FORMAT
 
@@ -69,6 +69,7 @@ Never mention a restaurant unless the same entry includes **all** of the followi
 - Charger name
 - Exact distance in metres
 - OpenChargeMap charger URL
+- PlugShare charger URL
 - Google Maps walking-directions URL
 
 If any item is missing, omit the restaurant entirely.
@@ -85,6 +86,7 @@ Before replying, confirm for every restaurant:
 - If `reviews.is_open_now` is `false`, the restaurant is excluded unless no alternatives exist
 - If `reviews` is present, rating is ≥ 3.5
 - OpenChargeMap URL is present
+- PlugShare URL is present
 - Walking URL contains `origin=`, `destination=`, and `travelmode=walking`
 
 Remove any restaurant that fails a check.
