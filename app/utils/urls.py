@@ -30,11 +30,11 @@ def google_maps_place_url(latitude: float, longitude: float) -> str:
 
 
 def plugshare_google_search_url(name: str, city: str | None, network: str | None) -> str:
-    query_parts = ['site:plugshare.com/location', f'"{name}"']
+    query_parts = ['site:plugshare.com/location', name]
     if city:
-        query_parts.append(f'"{city}"')
+        query_parts.append(city)
     if network:
-        query_parts.append(f'"{network}"')
+        query_parts.append(network)
 
     query = " ".join(query_parts)
     encoded_query = urlencode({"q": query})
