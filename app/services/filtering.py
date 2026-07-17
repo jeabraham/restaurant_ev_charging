@@ -101,6 +101,44 @@ def is_valid_website(url: str | None) -> bool:
     return lowered.startswith("http://") or lowered.startswith("https://")
 
 
+GOOGLE_FOOD_TYPES: dict[str, str] = {
+    "restaurant": "catering.restaurant",
+    "cafe": "catering.cafe",
+    "bar": "catering.bar",
+    "bakery": "catering.bakery",
+    "meal_takeaway": "catering.fast_food",
+    "meal_delivery": "catering.fast_food",
+    "fast_food_restaurant": "catering.fast_food",
+}
+
+
+def google_place_to_geoapify_shape(place: dict[str, Any]) -> dict[str, Any]:
+    """Convert a Google Places Nearby Search result to the Geoapify feature shape.
+
+    The returned dict has the same {"properties": {...}} structure expected by
+    is_qualifying_place(), dedupe_geoapify_place_key(), and the restaurant processing loop.
+    Google `types` are mapped to synthetic `catering.*` categories so the existing
+    catering filter works unchanged.
+    """
+    loc = (place.get("geometry") or {}).get("location") or {}
+    types = place.get("types") or []
+    categories = [GOOGLE_FOOD_TYPES[t] for t in types if t in GOOGLE_FOOD_TYPES]
+    return {
+        "properties": {
+            "place_id": place.get("place_id"),
+            "name": place.get("name"),
+            "formatted": place.get("vicinity"),
+            "lat": loc.get("lat"),
+            "lon": loc.get("lng"),  # Google uses "lng", Geoapify uses "lon"
+            "categories": categories,
+            "website": None,        # Not available from Nearby Search
+            "city": None,
+            "state": None,
+            "country": None,
+        }
+    }
+
+
 def is_qualifying_place(place: dict[str, Any]) -> bool:
     properties = place.get("properties") or {}
     name = properties.get("name")
