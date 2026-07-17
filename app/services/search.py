@@ -36,7 +36,7 @@ _CLOSED_PENALTY = 20.0  # confirmed closed now
 _DEFAULT_RATING = 3.0   # used when no review data is available
 _POWER_WEIGHT = 0.3     # kW → score points
 _DISTANCE_COST = 0.05   # metres → score points lost
-_FAST_FOOD_PENALTY = 30.0  # Penalty for fast food restaurants
+_FAST_FOOD_PENALTY = 50.0  # Penalty for fast food restaurants and chains
 _PRICE_BONUS = 5.0      # Bonus per price level above "$"
 
 

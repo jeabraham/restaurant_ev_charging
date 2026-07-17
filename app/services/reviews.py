@@ -62,12 +62,8 @@ def _parse_review_info(business: dict[str, Any]) -> ReviewInfo:
     is_closed = business.get("is_closed")
     is_open_now: bool | None = (not is_closed) if is_closed is not None else None
 
-    # Detect fast food from Yelp categories.
-    is_fast_food = any(
-        cat.get("alias") == "fastfood" or "fast food" in cat.get("title", "").lower()
-        for cat in (business.get("categories") or [])
-        if isinstance(cat, dict)
-    )
+    # Detect fast food or chains.
+    is_fast_food = is_likely_chain_or_fast_food(business.get("name", ""), categories)
 
     return ReviewInfo(
         rating=float(business.get("rating") or 0.0),
@@ -97,6 +93,62 @@ _GOOGLE_GENERIC_TYPES = {
     "store",
     "health",
 }
+
+# Common national/international chains that should be penalized/avoided.
+_COMMON_CHAINS = {
+    "a&w",
+    "starbucks",
+    "denny's",
+    "white spot",
+    "mcdonald's",
+    "subway",
+    "burger king",
+    "wendy's",
+    "tim hortons",
+    "pizza hut",
+    "domino's",
+    "kfc",
+    "taco bell",
+    "dairy queen",
+    "panera",
+    "chipotle",
+    "boston pizza",
+    "swiss chalet",
+    "cora",
+    "ricky's",
+    "the keg",
+    "cactus club",
+    "earls",
+    "moxies",
+    "joey",
+    "ihop",
+    "applebee's",
+    "chili's",
+    "olive garden",
+    "red lobster",
+    "buffalo wild wings",
+    "jack in the box",
+    "sonic",
+    "five guys",
+    "popeyes",
+    "quiznos",
+    "little caesars",
+    "papa john's",
+}
+
+
+def is_likely_chain_or_fast_food(name: str, categories: list[str]) -> bool:
+    """Check if a restaurant name or its categories suggest it's a chain or fast food."""
+    name_lower = name.lower()
+    if any(chain in name_lower for chain in _COMMON_CHAINS):
+        return True
+    
+    # Check categories for fast food indicators
+    fast_food_indicators = {"fast food", "fastfood", "quick service", "drive-thru"}
+    if any(indicator in cat.lower() for cat in categories for indicator in fast_food_indicators):
+        return True
+    
+    return False
 
 
 class GooglePlacesReviewProvider:
@@ -132,8 +184,6 @@ def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
     is_open_now: bool | None = open_now_raw if isinstance(open_now_raw, bool) else None
 
     types = place.get("types") or []
-    is_fast_food = "fast_food_restaurant" in types
-
     cuisine_types = [
         t.replace("_", " ").title()
         for t in types
@@ -148,6 +198,11 @@ def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
         # We include the name as well for better compatibility/display.
         encoded_name = urllib.parse.quote(name)
         provider_url = f"https://www.google.com/maps/search/?api=1&query={encoded_name}&query_place_id={place_id}"
+
+    # Detect fast food or chains.
+    is_fast_food = "fast_food_restaurant" in types or is_likely_chain_or_fast_food(
+        name, cuisine_types
+    )
 
     return ReviewInfo(
         rating=float(place.get("rating") or 0.0),

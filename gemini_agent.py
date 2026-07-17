@@ -83,31 +83,37 @@ _TOOLS = types.Tool(
 
 
 def _geocode(address: str, geoapify_key: str) -> dict:
-    response = httpx.get(
-        "https://api.geoapify.com/v1/geocode/search",
-        params={"text": address, "format": "json", "limit": 1, "apiKey": geoapify_key},
-        timeout=10,
-    )
-    response.raise_for_status()
-    results = response.json().get("results", [])
-    if not results:
-        return {"error": f"No results found for address: {address!r}"}
-    result = results[0]
-    return {
-        "latitude": result["lat"],
-        "longitude": result["lon"],
-        "formatted_address": result.get("formatted", address),
-    }
+    try:
+        response = httpx.get(
+            "https://api.geoapify.com/v1/geocode/search",
+            params={"text": address, "format": "json", "limit": 1, "apiKey": geoapify_key},
+            timeout=10,
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+        if not results:
+            return {"error": f"No results found for address: {address!r}"}
+        result = results[0]
+        return {
+            "latitude": result["lat"],
+            "longitude": result["lon"],
+            "formatted_address": result.get("formatted", address),
+        }
+    except httpx.HTTPError as e:
+        return {"error": f"Geocoding service error: {e}"}
 
 
 def _find_dining_chargers(args: dict) -> dict:
-    response = httpx.post(
-        f"{API_URL}/find-dining-chargers",
-        json=args,
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = httpx.post(
+            f"{API_URL}/find-dining-chargers",
+            json=args,
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPError as e:
+        return {"error": f"Search service error: {e}"}
 
 
 def main() -> None:
@@ -144,32 +150,35 @@ def main() -> None:
         if user_input.lower() in {"quit", "exit"}:
             break
 
-        response = chat.send_message(user_input)
+        try:
+            response = chat.send_message(user_input)
 
-        # Handle function calls — loop until Gemini returns a text response
-        while True:
-            fc_part = next(
-                (p for p in response.candidates[0].content.parts if p.function_call),
-                None,
-            )
-            if fc_part is None:
-                break
+            # Handle function calls — loop until Gemini returns a text response
+            while True:
+                fc_part = next(
+                    (p for p in response.candidates[0].content.parts if p.function_call),
+                    None,
+                )
+                if fc_part is None:
+                    break
 
-            fc = fc_part.function_call
-            args = dict(fc.args)
+                fc = fc_part.function_call
+                args = dict(fc.args)
 
-            if fc.name == "geocode_address":
-                print(f"  [→ geocode_address({json.dumps(args)})]")
-                result = _geocode(args["address"], geoapify_key)
-            else:
-                print(f"  [→ find_dining_chargers({json.dumps(args)})]")
-                result = _find_dining_chargers(args)
+                if fc.name == "geocode_address":
+                    print(f"  [→ geocode_address({json.dumps(args)})]")
+                    result = _geocode(args["address"], geoapify_key)
+                else:
+                    print(f"  [→ find_dining_chargers({json.dumps(args)})]")
+                    result = _find_dining_chargers(args)
 
-            response = chat.send_message(
-                types.Part.from_function_response(name=fc.name, response=result)
-            )
+                response = chat.send_message(
+                    types.Part.from_function_response(name=fc.name, response=result)
+                )
 
-        print(f"Gemini: {response.text}\n")
+            print(f"Gemini: {response.text}\n")
+        except Exception as e:
+            print(f"  [!] Error: {e}\n")
 
 
 if __name__ == "__main__":
