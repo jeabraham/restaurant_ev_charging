@@ -81,7 +81,9 @@ async def test_google_places_finds_well_known_restaurant(google_client):
 
     assert result is not None, (
         f"Google Places returned no candidates for {_KNOWN_RESTAURANT!r} "
-        f"near ({_KNOWN_LAT}, {_KNOWN_LON})"
+        f"near ({_KNOWN_LAT}, {_KNOWN_LON}). "
+        "If the API key is correct, check that the Places API is enabled "
+        "in your Google Cloud project and billing is active."
     )
     assert isinstance(result.get("name"), str), "Expected 'name' to be a string"
     assert isinstance(result.get("rating"), (int, float)), "Expected 'rating' to be a number"

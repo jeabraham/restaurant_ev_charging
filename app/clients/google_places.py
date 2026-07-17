@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from app.clients.http import RetryingHttpClient
+from app.errors import UpstreamHttpError
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,18 @@ class GooglePlacesClient:
             headers=None,
             service_name="GOOGLE_PLACES",
         )
-        candidates = response.get("candidates") if isinstance(response, dict) else None
+        if not isinstance(response, dict):
+            return None
+
+        status = response.get("status", "")
+        if status not in ("OK", "ZERO_RESULTS", ""):
+            raise UpstreamHttpError(
+                code="GOOGLE_PLACES_UPSTREAM_ERROR",
+                message=f"Google Places API returned status {status!r}.",
+                status_code=502,
+            )
+
+        candidates = response.get("candidates")
         if not candidates:
             return None
         return candidates[0]
