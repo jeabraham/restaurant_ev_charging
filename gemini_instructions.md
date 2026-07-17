@@ -75,6 +75,15 @@ Never mention a restaurant unless the same entry includes **all** of the followi
 
 If any item is missing, omit the restaurant entirely.
 
+Format all URLs as markdown links using exactly these labels:
+
+- `[Walking directions](url)` — Google Maps walking directions from charger to restaurant
+- `[Restaurant](url)` — Google Maps place URL for the restaurant
+- `[PlugShare](url)` — PlugShare URL for the charger
+- `[Website](url)` — restaurant website (omit this link if no website is available)
+
+Do not write out raw URLs. Do not use other link labels.
+
 ## FINAL VALIDATION
 
 Before replying, confirm for every restaurant:
