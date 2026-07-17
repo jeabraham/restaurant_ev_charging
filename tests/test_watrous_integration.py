@@ -27,6 +27,8 @@ from app.clients.geoapify import GeoapifyClient
 from app.clients.google_places import GooglePlacesClient
 from app.clients.http import RetryingHttpClient
 from app.clients.openchargemap import OpenChargeMapClient
+from app.schemas import FindDiningChargersRequest
+from app.services.search import DiningChargerService
 
 # ---------------------------------------------------------------------------
 # Load API keys from setup.env or environment
@@ -225,3 +227,65 @@ async def test_geoapify_restaurants_near_watrous_charger(geo_client):
         "the known coverage gap may have been fixed. Review and update this test."
     )
     print("\nGeoapify confirmed: no catering data for Watrous (known limitation).")
+
+
+# ---------------------------------------------------------------------------
+# Test 4 — End-to-end service with Google restaurant search enabled
+# ---------------------------------------------------------------------------
+
+
+async def test_end_to_end_watrous_with_google_restaurants(http_client):
+    """Full DiningChargerService search for Watrous returns results when Google is enabled.
+
+    This test verifies the complete pipeline: OCM charger discovery → Google restaurant
+    search → charger-restaurant pairing.  It confirms that the configuration flag
+    RESTAURANT_SEARCH_GOOGLE=1 is sufficient to fix the Watrous coverage gap.
+    """
+    if not _real_ocm:
+        pytest.skip("OPENCHARGEMAP_API_KEY not configured in setup.env")
+    if not _real_geo:
+        pytest.skip("GEOAPIFY_API_KEY not configured in setup.env")
+    if not _real_google:
+        pytest.skip("GOOGLE_PLACES_API_KEY not configured in setup.env")
+
+    ocm = OpenChargeMapClient(http_client, _ocm_key)
+    geo = GeoapifyClient(http_client, _geo_key)
+    google = GooglePlacesClient(http_client, _google_key)
+
+    service = DiningChargerService(
+        ocm,
+        geo,
+        review_provider=None,
+        google_client=google,
+        restaurant_search_geoapify=True,   # same as production defaults
+        restaurant_search_google=True,      # the flag the user has set
+        enable_charger_reviews=False,       # skip review enrichment to keep test fast
+    )
+
+    payload = FindDiningChargersRequest(
+        latitude=_WATROUS_LAT,
+        longitude=_WATROUS_LON,
+        radius_km=_CHARGER_SEARCH_RADIUS_KM,
+        restaurant_radius_m=_RESTAURANT_RADIUS_M,
+        ccs=True,
+        nacs=True,
+    )
+
+    data = await service.find(payload)
+    diag = data["diagnostics"]
+
+    print(f"\nWatrous end-to-end diagnostics: {diag}")
+    print(f"Results ({len(data['results'])} total):")
+    for r in data["results"]:
+        print(f"  - {r['restaurant']['name']!r}  charger={r['charger']['name']!r}"
+              f"  {r['distance']['straight_line_metres']:.0f} m")
+
+    assert diag["qualifying_chargers"] > 0, "No qualifying chargers found near Watrous"
+    assert len(data["results"]) > 0, (
+        "End-to-end search returned no results even with Google restaurant search enabled. "
+        "Check that RESTAURANT_SEARCH_GOOGLE is correctly wired through config → service."
+    )
+
+    names_lower = [r["restaurant"]["name"].lower() for r in data["results"]]
+    pepper_tree_found = any("peppertree" in n or "pepper tree" in n for n in names_lower)
+    print(f"\nPepper Tree in end-to-end results: {pepper_tree_found}")
