@@ -13,13 +13,13 @@ from google.genai import types
 import httpx
 
 _INSTRUCTIONS_PATH = pathlib.Path(__file__).parent / "gemini_instructions.md"
-_USE_GLOW = os.getenv("USE_GLOW") == "1"
+_USE_RICH = os.getenv("USE_RICH") == "1"
 
 
 def _print_response(text: str) -> None:
-    if _USE_GLOW:
+    if _USE_RICH:
         try:
-            subprocess.run(["glow", "-"], input=text.encode(), check=False)
+            subprocess.run(["rich", "--markdown", "-"], input=text.encode(), check=False)
             return
         except FileNotFoundError:
             pass

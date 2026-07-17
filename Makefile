@@ -16,12 +16,12 @@ run: $(VENV)
 
 run-agent: $(VENV)
 	@set -a && . ./setup.env && set +a; \
-	command -v glow >/dev/null 2>&1 && export USE_GLOW=1 && echo "glow detected — Gemini responses will be rendered as markdown." || true; \
+	command -v rich >/dev/null 2>&1 && export USE_RICH=1 && echo "rich detected — Gemini responses will be rendered as markdown." || true; \
 	$(PYTHON) gemini_agent.py
 
 plan-trip: $(VENV)
 	@set -a && . ./setup.env && set +a; \
-	command -v glow >/dev/null 2>&1 && export USE_GLOW=1 && echo "glow detected — Gemini responses will be rendered as markdown." || true; \
+	command -v rich >/dev/null 2>&1 && export USE_RICH=1 && echo "rich detected — Gemini responses will be rendered as markdown." || true; \
 	if nc -z localhost 8000 2>/dev/null; then \
 		echo "Server already running on :8000 — connecting agent to it."; \
 		$(PYTHON) gemini_agent.py; \
