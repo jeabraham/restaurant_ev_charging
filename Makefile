@@ -15,10 +15,13 @@ run: $(VENV)
 	set -a && . ./setup.env && set +a && $(VENV)/bin/uvicorn app.main:app --reload
 
 run-agent: $(VENV)
-	set -a && . ./setup.env && set +a && $(PYTHON) gemini_agent.py
+	@set -a && . ./setup.env && set +a; \
+	command -v glow >/dev/null 2>&1 && export USE_GLOW=1 && echo "glow detected — Gemini responses will be rendered as markdown." || true; \
+	$(PYTHON) gemini_agent.py
 
 plan-trip: $(VENV)
 	@set -a && . ./setup.env && set +a; \
+	command -v glow >/dev/null 2>&1 && export USE_GLOW=1 && echo "glow detected — Gemini responses will be rendered as markdown." || true; \
 	if nc -z localhost 8000 2>/dev/null; then \
 		echo "Server already running on :8000 — connecting agent to it."; \
 		$(PYTHON) gemini_agent.py; \

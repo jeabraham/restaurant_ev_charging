@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import subprocess
 import sys
 
 from google import genai
@@ -12,6 +13,17 @@ from google.genai import types
 import httpx
 
 _INSTRUCTIONS_PATH = pathlib.Path(__file__).parent / "gemini_instructions.md"
+_USE_GLOW = os.getenv("USE_GLOW") == "1"
+
+
+def _print_response(text: str) -> None:
+    if _USE_GLOW:
+        try:
+            subprocess.run(["glow", "-"], input=text.encode(), check=False)
+            return
+        except FileNotFoundError:
+            pass
+    print(f"Gemini: {text}\n")
 
 API_URL = os.getenv("RESTAURANT_EV_API_URL", "http://127.0.0.1:8000")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
@@ -176,7 +188,7 @@ def main() -> None:
                     types.Part.from_function_response(name=fc.name, response=result)
                 )
 
-            print(f"Gemini: {response.text}\n")
+            _print_response(response.text)
         except Exception as e:
             print(f"  [!] Error: {e}\n")
 
