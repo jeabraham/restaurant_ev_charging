@@ -88,6 +88,7 @@ async def test_google_places_finds_well_known_restaurant(google_client):
     assert isinstance(result.get("name"), str), "Expected 'name' to be a string"
     assert isinstance(result.get("rating"), (int, float)), "Expected 'rating' to be a number"
     assert isinstance(result.get("user_ratings_total"), int), "Expected 'user_ratings_total' to be an int"
+    assert result.get("business_status") in ("OPERATIONAL", "CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY")
     assert result["rating"] >= 1.0, "Rating should be at least 1.0"
     assert result["user_ratings_total"] >= 1, "A well-known restaurant should have at least one review"
 

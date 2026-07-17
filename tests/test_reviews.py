@@ -181,6 +181,7 @@ def _google_place(
     open_now: bool | None = True,
     url: str = "https://maps.google.com/?cid=1234",
     types: list[str] | None = None,
+    business_status: str | None = None,
 ) -> dict:
     place: dict = {
         "name": name,
@@ -193,6 +194,8 @@ def _google_place(
         place["price_level"] = price_level
     if open_now is not None:
         place["opening_hours"] = {"open_now": open_now}
+    if business_status is not None:
+        place["business_status"] = business_status
     return place
 
 
@@ -272,3 +275,23 @@ async def test_google_provider_failure_returns_none_without_raising():
     provider = GooglePlacesReviewProvider(_FailingGoogleClient())
     result = await provider.lookup("Some Restaurant", 51.0, -110.0)
     assert result is None
+
+
+def test_parse_google_place_permanently_closed():
+    # Even if open_now is True (unlikely for closed places but good for testing),
+    # business_status should take precedence.
+    place = _google_place(open_now=True, business_status="CLOSED_PERMANENTLY")
+    info = _parse_google_place(place)
+    assert info.is_open_now is False
+
+
+def test_parse_google_place_temporarily_closed():
+    place = _google_place(open_now=True, business_status="CLOSED_TEMPORARILY")
+    info = _parse_google_place(place)
+    assert info.is_open_now is False
+
+
+def test_parse_google_place_operational():
+    place = _google_place(open_now=True, business_status="OPERATIONAL")
+    info = _parse_google_place(place)
+    assert info.is_open_now is True

@@ -179,9 +179,13 @@ def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
     price_raw = place.get("price_level")
     price_level = _GOOGLE_PRICE_LEVEL.get(price_raw) if isinstance(price_raw, int) else None
 
-    opening_hours = place.get("opening_hours") or {}
-    open_now_raw = opening_hours.get("open_now")
-    is_open_now: bool | None = open_now_raw if isinstance(open_now_raw, bool) else None
+    business_status = place.get("business_status")
+    if business_status in ("CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"):
+        is_open_now: bool | None = False
+    else:
+        opening_hours = place.get("opening_hours") or {}
+        open_now_raw = opening_hours.get("open_now")
+        is_open_now = open_now_raw if isinstance(open_now_raw, bool) else None
 
     types = place.get("types") or []
     cuisine_types = [
