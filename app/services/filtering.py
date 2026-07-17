@@ -7,7 +7,7 @@ CCS_TYPE_IDS = {32, 33}
 NACS_TYPE_IDS = {30, 31}
 L2_TYPE_IDS = {1, 25}  # J1772 (North America) and IEC 62196 Type 2 (Mennekes)
 FAST_CHARGE_MIN_KW = 50
-L2_MIN_KW = 7
+L2_MIN_KW = 3.0  # Standard 16 A / 240 V Level 2 chargers deliver 3.3–3.7 kW; Level 1 (120 V) is ~1.4 kW
 
 TESLA_ONLY_PATTERN = re.compile(r"(?:tesla[-\s]?only|only tesla|tesla vehicles only)", re.IGNORECASE)
 NON_TESLA_PATTERN = re.compile(
@@ -45,6 +45,12 @@ def normalize_connector(
 
     if requested_l2 and (type_id in L2_TYPE_IDS or "j1772" in title.lower() or "type 2" in title.lower()):
         return {"type": "J1772" if (type_id == 1 or "j1772" in title.lower()) else "Type2", "level": "L2", "power_kw": power_kw}
+
+    # NACS connectors below fast-charge speed (e.g. Tesla Destination Chargers at 16–48 kW).
+    # Only included when the user explicitly requests L2 — a user asking for NACS without L2
+    # wants DC fast (Superchargers) only, not slow destination chargers.
+    if requested_l2 and requested_nacs and (type_id in NACS_TYPE_IDS or "nacs" in title.lower() or "tesla" in title.lower()):
+        return {"type": "NACS", "level": "L2", "power_kw": power_kw}
 
     return None
 

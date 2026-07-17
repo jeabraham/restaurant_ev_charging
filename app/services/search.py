@@ -260,17 +260,18 @@ class DiningChargerService:
                 except Exception:
                     logger.warning("Google Places restaurant search failed.", exc_info=True)
 
-            # Cross-source deduplication by name + rounded lat/lon (~11 m precision).
-            seen: set[str] = set()
+            # Cross-source deduplication by name alone.
+            # Within a single charger's restaurant_radius_m search area, two places with
+            # identical names from different providers are almost certainly the same business.
+            # Geoapify results are listed first so we prefer their richer metadata when both
+            # providers return the same place.
+            seen_names: set[str] = set()
             deduped: list[dict[str, Any]] = []
             for place in all_places:
                 props = place.get("properties") or {}
                 name = (props.get("name") or "").strip().lower()
-                lat = round(float(props.get("lat") or 0.0), 4)
-                lon = round(float(props.get("lon") or 0.0), 4)
-                cross_source_key = f"{name}|{lat}|{lon}"
-                if cross_source_key not in seen:
-                    seen.add(cross_source_key)
+                if name not in seen_names:
+                    seen_names.add(name)
                     deduped.append(place)
 
             return charger_item, deduped, geo_raw_count
