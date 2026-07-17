@@ -183,6 +183,16 @@ def is_google_place_closed(place: dict[str, Any]) -> bool:
     return False
 
 
+def google_place_open_now(place: dict[str, Any]) -> bool | None:
+    """Returns True/False from opening_hours.open_now, or None if not available."""
+    opening_hours = place.get("opening_hours")
+    if isinstance(opening_hours, dict):
+        open_now = opening_hours.get("open_now")
+        if isinstance(open_now, bool):
+            return open_now
+    return None
+
+
 def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
     price_raw = place.get("price_level")
     price_level = _GOOGLE_PRICE_LEVEL.get(price_raw) if isinstance(price_raw, int) else None

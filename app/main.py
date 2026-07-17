@@ -64,7 +64,10 @@ async def lifespan(app: FastAPI):
         ocm_client,
         geo_client,
         review_provider,
-        google_client=google_client if settings.enable_reviews else None,
+        google_client=google_client,
+        restaurant_search_geoapify=settings.restaurant_search_geoapify,
+        restaurant_search_google=settings.restaurant_search_google,
+        enable_charger_reviews=settings.enable_reviews,
     )
 
     try:

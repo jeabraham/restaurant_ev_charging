@@ -10,15 +10,15 @@ from app.clients.google_places import GooglePlacesClient
 from app.clients.openchargemap import OpenChargeMapClient
 from app.schemas import FindDiningChargersRequest
 from app.services.filtering import (
-    dedupe_geoapify_place_key,
     detect_tesla_restriction,
+    google_place_to_geoapify_shape,
     is_qualifying_place,
     is_valid_website,
     normalize_connector,
     station_is_explicitly_non_operational,
     station_status_value,
 )
-from app.services.reviews import ReviewProvider, is_google_place_closed
+from app.services.reviews import ReviewProvider, google_place_open_now, is_google_place_closed
 from app.utils.distance import haversine_metres
 from app.utils.urls import (
     google_maps_place_url,
@@ -50,11 +50,17 @@ class DiningChargerService:
         geo_client: GeoapifyClient,
         review_provider: ReviewProvider | None = None,
         google_client: GooglePlacesClient | None = None,
+        restaurant_search_geoapify: bool = True,
+        restaurant_search_google: bool = False,
+        enable_charger_reviews: bool = True,
     ) -> None:
         self._ocm_client = ocm_client
         self._geo_client = geo_client
         self._review_provider = review_provider
         self._google_client = google_client
+        self._restaurant_search_geoapify = restaurant_search_geoapify
+        self._restaurant_search_google = restaurant_search_google
+        self._enable_charger_reviews = enable_charger_reviews
 
     async def find(self, payload: FindDiningChargersRequest) -> dict[str, Any]:
         locations = await self._ocm_client.nearby_stations(
@@ -137,8 +143,57 @@ class DiningChargerService:
                 }
             )
 
+        # If OCM returned nothing and Google client is available, fall back to Google Places.
+        # Google doesn't provide connector type or power data, so these chargers are added
+        # without connector filtering and are marked with source="google_places".
+        if not qualifying_chargers and self._google_client:
+            logger.info("OCM returned no qualifying chargers — falling back to Google Places search.")
+            try:
+                google_stations = await self._google_client.search_ev_chargers(
+                    latitude=payload.latitude,
+                    longitude=payload.longitude,
+                    radius_m=int(payload.radius_km * 1000),
+                )
+                for gstation in google_stations:
+                    if is_google_place_closed(gstation):
+                        continue
+                    loc = (gstation.get("geometry") or {}).get("location") or {}
+                    glat = loc.get("lat")
+                    glon = loc.get("lng")
+                    if glat is None or glon is None:
+                        continue
+                    gname = gstation.get("name") or "Unknown Charger"
+                    plugshare_url = plugshare_google_search_url(gname, None, None)
+                    charger: dict[str, Any] = {
+                        "name": gname,
+                        "network": None,
+                        "connector_types": [],
+                        "maximum_power_kw": 0,
+                        "latitude": glat,
+                        "longitude": glon,
+                        "status": "Unknown",
+                        "compatibility_notes": "Connector type and power level unknown — found via Google Places fallback. Verify before relying on this charger.",
+                        "openchargemap_poi_id": None,
+                        "openchargemap_url": None,
+                        "plugshare_url": plugshare_url,
+                        "source": "google_places",
+                    }
+                    open_now = google_place_open_now(gstation)
+                    charger["reviews"] = {
+                        "rating": float(gstation.get("rating") or 0.0),
+                        "review_count": int(gstation.get("user_ratings_total") or 0),
+                        "provider": "google",
+                        **({"is_open_now": open_now} if open_now is not None else {}),
+                    }
+                    qualifying_chargers.append(charger)
+                    locality = gstation.get("vicinity")
+                    if locality:
+                        locality_candidates.append(locality)
+            except Exception:
+                logger.warning("Google Places fallback charger search failed.", exc_info=True)
+
         # Try to fetch Google reviews for chargers if enabled.
-        if self._google_client:
+        if self._google_client and self._enable_charger_reviews:
             async def enrich_charger(c: dict) -> dict | None:
                 try:
                     place = await self._google_client.find_place(
@@ -154,13 +209,17 @@ class DiningChargerService:
                             return None
 
                         # We use a similar structure to restaurant reviews but simplified.
-                        c["reviews"] = {
+                        reviews: dict[str, Any] = {
                             "rating": float(place.get("rating") or 0.0),
                             "review_count": int(place.get("user_ratings_total") or 0),
                             "provider": "google",
                         }
+                        open_now = google_place_open_now(place)
+                        if open_now is not None:
+                            reviews["is_open_now"] = open_now
                         if "url" in place:
-                            c["reviews"]["provider_url"] = place["url"]
+                            reviews["provider_url"] = place["url"]
+                        c["reviews"] = reviews
                 except Exception:
                     logger.warning("Failed to fetch Google reviews for charger %r", c["name"])
                 return c
@@ -175,20 +234,54 @@ class DiningChargerService:
 
         async def fetch_places(
             charger_item: dict[str, Any]
-        ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-            places_found = await self._geo_client.nearby_food_places(
-                latitude=charger_item["latitude"],
-                longitude=charger_item["longitude"],
-                radius_m=payload.restaurant_radius_m,
-            )
-            return charger_item, places_found
+        ) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
+            """Returns (charger, places, geoapify_raw_count)."""
+            all_places: list[dict[str, Any]] = []
+            geo_raw_count = 0
+
+            if self._restaurant_search_geoapify:
+                geo_places = await self._geo_client.nearby_food_places(
+                    latitude=charger_item["latitude"],
+                    longitude=charger_item["longitude"],
+                    radius_m=payload.restaurant_radius_m,
+                )
+                geo_raw_count = len(geo_places)
+                all_places.extend(geo_places)
+
+            if self._restaurant_search_google and self._google_client:
+                try:
+                    google_food = await self._google_client.nearby_food_places(
+                        latitude=charger_item["latitude"],
+                        longitude=charger_item["longitude"],
+                        radius_m=payload.restaurant_radius_m,
+                    )
+                    for gp in google_food:
+                        all_places.append(google_place_to_geoapify_shape(gp))
+                except Exception:
+                    logger.warning("Google Places restaurant search failed.", exc_info=True)
+
+            # Cross-source deduplication by name alone.
+            # Within a single charger's restaurant_radius_m search area, two places with
+            # identical names from different providers are almost certainly the same business.
+            # Geoapify results are listed first so we prefer their richer metadata when both
+            # providers return the same place.
+            seen_names: set[str] = set()
+            deduped: list[dict[str, Any]] = []
+            for place in all_places:
+                props = place.get("properties") or {}
+                name = (props.get("name") or "").strip().lower()
+                if name not in seen_names:
+                    seen_names.add(name)
+                    deduped.append(place)
+
+            return charger_item, deduped, geo_raw_count
 
         charger_places_pairs = await asyncio.gather(
             *[fetch_places(c) for c in qualifying_chargers]
         )
 
-        for charger, places in charger_places_pairs:
-            geoapify_places_received += len(places)
+        for charger, places, geo_raw_count in charger_places_pairs:
+            geoapify_places_received += geo_raw_count
 
             for place in places:
                 props = place.get("properties") or {}
@@ -225,7 +318,16 @@ class DiningChargerService:
                 if locality:
                     locality_candidates.append(locality)
 
-                dedupe_key = dedupe_geoapify_place_key(place)
+                # Use name + rounded coordinates (~111 m precision) as the canonical
+                # dedup key so that the same restaurant from different sources
+                # (Geoapify vs Google Places) or different charger queries is merged
+                # into a single entry.
+                place_name_lower = (properties.get("name") or "").strip().lower()
+                dedupe_key = (
+                    f"{place_name_lower}"
+                    f"|{round(float(restaurant_lat), 3)}"
+                    f"|{round(float(restaurant_lon), 3)}"
+                )
                 pair = {
                     "charger": charger,
                     "distance": {

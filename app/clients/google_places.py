@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 _FIND_PLACE_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
 _FIND_PLACE_FIELDS = "place_id,name,rating,user_ratings_total,price_level,opening_hours,types,business_status"
 _MATCH_RADIUS_M = 200
+_NEARBY_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+_NEARBY_SEARCH_FIELDS = "place_id,name,geometry,rating,user_ratings_total,opening_hours,business_status,vicinity"
+_NEARBY_FOOD_FIELDS = "place_id,name,geometry,rating,user_ratings_total,opening_hours,business_status,vicinity,types"
 
 
 class GooglePlacesClient:
@@ -57,3 +60,83 @@ class GooglePlacesClient:
         if not candidates:
             return None
         return candidates[0]
+
+    async def search_ev_chargers(
+        self,
+        latitude: float,
+        longitude: float,
+        radius_m: int = 10000,
+    ) -> list[dict[str, Any]]:
+        """Search Google Places for EV charging stations near given coordinates.
+
+        Returns a list of place dicts. Note: Google Places does not include connector
+        type or power level data — these results are suitable as a fallback when
+        OpenChargeMap returns nothing, but connector filtering cannot be applied.
+        """
+        params = {
+            "location": f"{latitude},{longitude}",
+            "radius": radius_m,
+            "type": "electric_vehicle_charging_station",
+            "fields": _NEARBY_SEARCH_FIELDS,
+            "key": self._api_key,
+        }
+        response = await self._http_client.get_json(
+            url=_NEARBY_SEARCH_URL,
+            params=params,
+            headers=None,
+            service_name="GOOGLE_PLACES",
+        )
+        if not isinstance(response, dict):
+            return []
+
+        status = response.get("status", "")
+        if status not in ("OK", "ZERO_RESULTS", ""):
+            raise UpstreamHttpError(
+                code="GOOGLE_PLACES_UPSTREAM_ERROR",
+                message=f"Google Places Nearby Search returned status {status!r}.",
+                status_code=502,
+            )
+
+        return response.get("results") or []
+
+    async def nearby_food_places(
+        self,
+        latitude: float,
+        longitude: float,
+        radius_m: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Search Google Places for restaurants and cafes near given coordinates.
+
+        Returns raw Google place dicts. Permanently/temporarily closed places are
+        filtered out here. Results must be normalised with google_place_to_geoapify_shape()
+        before passing to the restaurant processing pipeline.
+        """
+        params = {
+            "location": f"{latitude},{longitude}",
+            "radius": radius_m,
+            "type": "restaurant",
+            "fields": _NEARBY_FOOD_FIELDS,
+            "key": self._api_key,
+        }
+        response = await self._http_client.get_json(
+            url=_NEARBY_SEARCH_URL,
+            params=params,
+            headers=None,
+            service_name="GOOGLE_PLACES",
+        )
+        if not isinstance(response, dict):
+            return []
+
+        status = response.get("status", "")
+        if status not in ("OK", "ZERO_RESULTS", ""):
+            raise UpstreamHttpError(
+                code="GOOGLE_PLACES_UPSTREAM_ERROR",
+                message=f"Google Places Nearby Search returned status {status!r}.",
+                status_code=502,
+            )
+
+        results = response.get("results") or []
+        return [
+            r for r in results
+            if r.get("business_status") not in ("CLOSED_PERMANENTLY", "CLOSED_TEMPORARILY")
+        ]
