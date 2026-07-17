@@ -9,6 +9,7 @@ class Settings:
     openchargemap_api_key: str
     geoapify_api_key: str
     yelp_api_key: str
+    google_places_api_key: str
     enable_reviews: bool
 
 
@@ -27,5 +28,6 @@ def load_settings() -> Settings:
         openchargemap_api_key=ocm_key,
         geoapify_api_key=os.getenv("GEOAPIFY_API_KEY", ""),
         yelp_api_key=os.getenv("YELP_API_KEY", ""),
+        google_places_api_key=os.getenv("GOOGLE_PLACES_API_KEY", ""),
         enable_reviews=enable_reviews,
     )

@@ -81,6 +81,16 @@ async def test_client_with_yelp(monkeypatch):
             yield client
 
 
+@pytest.fixture
+async def test_client_with_google(monkeypatch):
+    monkeypatch.delenv("YELP_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "test_google_key")
+    async with app.router.lifespan_context(app):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            yield client
+
+
 @respx.mock
 async def test_endpoint_success_and_sorting(test_client):
     respx.get("https://api.openchargemap.io/v3/poi").mock(
@@ -246,3 +256,49 @@ async def test_no_results_warning(test_client):
     body = response.json()
     assert body["results"] == []
     assert "No qualifying charger-restaurant pairs were found." in body["diagnostics"]["warnings"]
+
+
+@respx.mock
+async def test_endpoint_enriches_with_google_reviews(test_client_with_google):
+    """When GOOGLE_PLACES_API_KEY is configured and YELP_API_KEY is absent, restaurants get Google reviews."""
+    respx.get("https://api.openchargemap.io/v3/poi").mock(
+        return_value=Response(200, json=[_ocm_station(station_id=100, power_kw=150, connection_type_id=33, connection_title="CCS")])
+    )
+    respx.get("https://api.geoapify.com/v2/places").mock(return_value=Response(200, json=_geoapify_features()))
+    respx.get("https://maps.googleapis.com/maps/api/place/findplacefromtext/json").mock(
+        return_value=Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "name": "Example Restaurant",
+                        "rating": 4.2,
+                        "user_ratings_total": 180,
+                        "price_level": 2,
+                        "opening_hours": {"open_now": True},
+                        "url": "https://maps.google.com/?cid=1234",
+                        "types": ["canadian_restaurant", "restaurant", "food", "establishment"],
+                    }
+                ],
+                "status": "OK",
+            },
+        )
+    )
+
+    response = await test_client_with_google.post(
+        "/find-dining-chargers",
+        json={"latitude": 51.467, "longitude": -109.156},
+    )
+
+    assert response.status_code == 200
+    results = response.json()["results"]
+    enriched = [r for r in results if r["restaurant"].get("reviews")]
+    assert enriched, "Expected at least one restaurant to have a reviews field"
+    reviews = enriched[0]["restaurant"]["reviews"]
+    assert reviews["rating"] == 4.2
+    assert reviews["review_count"] == 180
+    assert reviews["price_level"] == "$$"
+    assert reviews["is_open_now"] is True
+    assert reviews["provider"] == "google"
+    assert reviews["provider_url"] == "https://maps.google.com/?cid=1234"
+    assert "Canadian Restaurant" in reviews["cuisine_types"]
