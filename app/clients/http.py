@@ -17,7 +17,7 @@ class RetryingHttpClient:
         self,
         client: httpx.AsyncClient,
         *,
-        timeout_seconds: float = 10.0,
+        timeout_seconds: float = 20.0,
         retries: int = 3,
     ) -> None:
         self._client = client

@@ -36,7 +36,7 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = load_settings()
-    timeout = httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=10.0)
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=30.0)
     shared_client = httpx.AsyncClient(timeout=timeout)
 
     retrying_client = RetryingHttpClient(shared_client)

@@ -87,7 +87,7 @@ def _geocode(address: str, geoapify_key: str) -> dict:
         response = httpx.get(
             "https://api.geoapify.com/v1/geocode/search",
             params={"text": address, "format": "json", "limit": 1, "apiKey": geoapify_key},
-            timeout=10,
+            timeout=20,
         )
         response.raise_for_status()
         results = response.json().get("results", [])
@@ -108,7 +108,7 @@ def _find_dining_chargers(args: dict) -> dict:
         response = httpx.post(
             f"{API_URL}/find-dining-chargers",
             json=args,
-            timeout=30,
+            timeout=60,
         )
         response.raise_for_status()
         return response.json()

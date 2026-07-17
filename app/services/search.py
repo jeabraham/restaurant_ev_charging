@@ -129,12 +129,21 @@ class DiningChargerService:
         # Collect all (charger, distance) pairs per unique restaurant.
         restaurant_chargers: dict[str, dict] = {}
 
-        for charger in qualifying_chargers:
-            places = await self._geo_client.nearby_food_places(
-                latitude=charger["latitude"],
-                longitude=charger["longitude"],
+        async def fetch_places(
+            charger_item: dict[str, Any]
+        ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+            places_found = await self._geo_client.nearby_food_places(
+                latitude=charger_item["latitude"],
+                longitude=charger_item["longitude"],
                 radius_m=payload.restaurant_radius_m,
             )
+            return charger_item, places_found
+
+        charger_places_pairs = await asyncio.gather(
+            *[fetch_places(c) for c in qualifying_chargers]
+        )
+
+        for charger, places in charger_places_pairs:
             geoapify_places_received += len(places)
 
             for place in places:
