@@ -48,15 +48,24 @@ async def lifespan(app: FastAPI):
         retrying_client,
         settings.geoapify_api_key,
     )
+    google_client = None
+    if settings.google_places_api_key:
+        google_client = GooglePlacesClient(retrying_client, settings.google_places_api_key)
+
     review_provider = None
     if settings.enable_reviews:
         if settings.yelp_api_key:
             yelp_client = YelpClient(retrying_client, settings.yelp_api_key)
             review_provider = YelpReviewProvider(yelp_client)
-        elif settings.google_places_api_key:
-            google_client = GooglePlacesClient(retrying_client, settings.google_places_api_key)
+        elif google_client:
             review_provider = GooglePlacesReviewProvider(google_client)
-    app.state.dining_service = DiningChargerService(ocm_client, geo_client, review_provider)
+
+    app.state.dining_service = DiningChargerService(
+        ocm_client,
+        geo_client,
+        review_provider,
+        google_client=google_client if settings.enable_reviews else None,
+    )
 
     try:
         yield

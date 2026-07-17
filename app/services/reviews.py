@@ -175,12 +175,19 @@ class GooglePlacesReviewProvider:
         return _parse_google_place(place)
 
 
+def is_google_place_closed(place: dict[str, Any]) -> bool:
+    """Returns True if the place is explicitly marked as temporarily or permanently closed."""
+    business_status = place.get("business_status")
+    if business_status in ("CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"):
+        return True
+    return False
+
+
 def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
     price_raw = place.get("price_level")
     price_level = _GOOGLE_PRICE_LEVEL.get(price_raw) if isinstance(price_raw, int) else None
 
-    business_status = place.get("business_status")
-    if business_status in ("CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"):
+    if is_google_place_closed(place):
         is_open_now: bool | None = False
     else:
         opening_hours = place.get("opening_hours") or {}

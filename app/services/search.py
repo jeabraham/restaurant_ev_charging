@@ -6,6 +6,7 @@ import math
 from typing import Any
 
 from app.clients.geoapify import GeoapifyClient
+from app.clients.google_places import GooglePlacesClient
 from app.clients.openchargemap import OpenChargeMapClient
 from app.schemas import FindDiningChargersRequest
 from app.services.filtering import (
@@ -17,12 +18,13 @@ from app.services.filtering import (
     station_is_explicitly_non_operational,
     station_status_value,
 )
-from app.services.reviews import ReviewProvider
+from app.services.reviews import ReviewProvider, is_google_place_closed
 from app.utils.distance import haversine_metres
 from app.utils.urls import (
     google_maps_place_url,
     google_maps_walking_url,
     openchargemap_details_url,
+    plugshare_google_search_url,
 )
 
 
@@ -38,6 +40,7 @@ _POWER_WEIGHT = 0.3     # kW → score points
 _DISTANCE_COST = 0.05   # metres → score points lost
 _FAST_FOOD_PENALTY = 50.0  # Penalty for fast food restaurants and chains
 _PRICE_BONUS = 5.0      # Bonus per price level above "$"
+_CHARGER_RATING_WEIGHT = 10.0  # Google charger rating → score points
 
 
 class DiningChargerService:
@@ -46,10 +49,12 @@ class DiningChargerService:
         ocm_client: OpenChargeMapClient,
         geo_client: GeoapifyClient,
         review_provider: ReviewProvider | None = None,
+        google_client: GooglePlacesClient | None = None,
     ) -> None:
         self._ocm_client = ocm_client
         self._geo_client = geo_client
         self._review_provider = review_provider
+        self._google_client = google_client
 
     async def find(self, payload: FindDiningChargersRequest) -> dict[str, Any]:
         locations = await self._ocm_client.nearby_stations(
@@ -108,10 +113,15 @@ class DiningChargerService:
             if locality:
                 locality_candidates.append(locality)
 
+            name = address.get("Title") or "Unknown Charger"
+            city = address.get("Town")
+            network = (station.get("OperatorInfo") or {}).get("Title")
+            plugshare_url = plugshare_google_search_url(name, city, network)
+
             qualifying_chargers.append(
                 {
-                    "name": (address.get("Title") or "Unknown Charger"),
-                    "network": ((station.get("OperatorInfo") or {}).get("Title")),
+                    "name": name,
+                    "network": network,
                     "connector_types": sorted(
                         connector_types,
                         key=lambda connector: (connector["type"], -connector["power_kw"]),
@@ -123,8 +133,42 @@ class DiningChargerService:
                     "compatibility_notes": compatibility_notes,
                     "openchargemap_poi_id": station_id,
                     "openchargemap_url": openchargemap_details_url(station_id),
+                    "plugshare_url": plugshare_url,
                 }
             )
+
+        # Try to fetch Google reviews for chargers if enabled.
+        if self._google_client:
+            async def enrich_charger(c: dict) -> dict | None:
+                try:
+                    place = await self._google_client.find_place(
+                        c["name"], c["latitude"], c["longitude"]
+                    )
+                    if place:
+                        # Check if the charger is closed in Google Places.
+                        if is_google_place_closed(place):
+                            logger.info(
+                                "Excluding charger %r because it is marked as closed in Google Places.",
+                                c["name"],
+                            )
+                            return None
+
+                        # We use a similar structure to restaurant reviews but simplified.
+                        c["reviews"] = {
+                            "rating": float(place.get("rating") or 0.0),
+                            "review_count": int(place.get("user_ratings_total") or 0),
+                            "provider": "google",
+                        }
+                        if "url" in place:
+                            c["reviews"]["provider_url"] = place["url"]
+                except Exception:
+                    logger.warning("Failed to fetch Google reviews for charger %r", c["name"])
+                return c
+
+            enriched_chargers = await asyncio.gather(
+                *[enrich_charger(c) for c in qualifying_chargers]
+            )
+            qualifying_chargers = [c for c in enriched_chargers if c is not None]
 
         # Collect all (charger, distance) pairs per unique restaurant.
         restaurant_chargers: dict[str, dict] = {}
@@ -220,15 +264,15 @@ class DiningChargerService:
                     restaurant_chargers[dedupe_key]["pairs"].append(pair)
 
         # Build deduplicated results: best-scoring charger is primary, rest go in other_close_chargers.
-        # Score = power_kw - distance_m * KW_PER_METRE; a faster charger is preferred over a closer
-        # one unless the extra walk costs more than the power gain (0.08 kW/m means a 50 kW DC fast
-        # charger beats a 9 kW L2 even at 500 m; breakeven vs an 11 kW L2 is ~487 m extra walk).
-        KW_PER_METRE = 0.08
         results = []
         for entry in restaurant_chargers.values():
             pairs = sorted(
                 entry["pairs"],
-                key=lambda p: p["charger"]["maximum_power_kw"] - p["distance"]["straight_line_metres"] * KW_PER_METRE,
+                key=lambda p: (
+                    p["charger"]["maximum_power_kw"] * _POWER_WEIGHT
+                    + (p["charger"].get("reviews", {}).get("rating", _DEFAULT_RATING) * _CHARGER_RATING_WEIGHT)
+                    - p["distance"]["straight_line_metres"] * _DISTANCE_COST
+                ),
                 reverse=True,
             )
             primary = pairs[0]
@@ -251,6 +295,7 @@ class DiningChargerService:
                         "estimated_walking_time_minutes": p["distance"][
                             "estimated_walking_time_minutes"
                         ],
+                        "reviews": p["charger"].get("reviews"),
                     }
                     for p in pairs[1:]
                 ]
@@ -345,6 +390,10 @@ def _combined_score(item: dict) -> float:
     """Higher is better.  Balances charger power, restaurant rating, and walking distance."""
     power_kw = item["charger"]["maximum_power_kw"]
     distance_m = item["distance"]["straight_line_metres"]
+
+    charger_reviews = item["charger"].get("reviews")
+    charger_rating = charger_reviews["rating"] if charger_reviews else _DEFAULT_RATING
+
     reviews = item["restaurant"].get("reviews")
     rating = reviews["rating"] if reviews else _DEFAULT_RATING
     is_open_now = reviews.get("is_open_now") if reviews else None
@@ -364,6 +413,7 @@ def _combined_score(item: dict) -> float:
     return (
         power_kw * _POWER_WEIGHT
         + rating * _RATING_WEIGHT
+        + charger_rating * _CHARGER_RATING_WEIGHT
         - distance_m * _DISTANCE_COST
         + open_adjustment
         - fast_food_penalty
