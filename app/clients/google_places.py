@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -138,39 +139,55 @@ class GooglePlacesClient:
         latitude: float,
         longitude: float,
         radius_m: int = 500,
+        max_pages: int = 3,
     ) -> list[dict[str, Any]]:
         """Search Google Places for restaurants and cafes near given coordinates.
+
+        Follows ``next_page_token`` pagination to return up to ``max_pages`` pages
+        of results (each page contains up to 20 places, so the default cap is 60).
 
         Returns raw Google place dicts. Permanently/temporarily closed places are
         filtered out here. Results must be normalised with google_place_to_geoapify_shape()
         before passing to the restaurant processing pipeline.
         """
-        params = {
+        params: dict[str, Any] = {
             "location": f"{latitude},{longitude}",
             "radius": radius_m,
             "type": "restaurant",
             "fields": _NEARBY_FOOD_FIELDS,
             "key": self._api_key,
         }
-        response = await self._http_client.get_json(
-            url=_NEARBY_SEARCH_URL,
-            params=params,
-            headers=None,
-            service_name="GOOGLE_PLACES",
-        )
-        if not isinstance(response, dict):
-            return []
 
-        status = response.get("status", "")
-        if status not in ("OK", "ZERO_RESULTS", ""):
-            raise UpstreamHttpError(
-                code="GOOGLE_PLACES_UPSTREAM_ERROR",
-                message=f"Google Places Nearby Search returned status {status!r}.",
-                status_code=502,
+        all_results: list[dict[str, Any]] = []
+        for page in range(max_pages):
+            response = await self._http_client.get_json(
+                url=_NEARBY_SEARCH_URL,
+                params=params,
+                headers=None,
+                service_name="GOOGLE_PLACES",
             )
+            if not isinstance(response, dict):
+                break
 
-        results = response.get("results") or []
+            status = response.get("status", "")
+            if status not in ("OK", "ZERO_RESULTS", ""):
+                raise UpstreamHttpError(
+                    code="GOOGLE_PLACES_UPSTREAM_ERROR",
+                    message=f"Google Places Nearby Search returned status {status!r}.",
+                    status_code=502,
+                )
+
+            all_results.extend(response.get("results") or [])
+
+            next_token = response.get("next_page_token")
+            if not next_token or page + 1 >= max_pages:
+                break
+
+            # The next_page_token requires a short delay before it becomes valid.
+            await asyncio.sleep(2)
+            params = {"pagetoken": next_token, "key": self._api_key}
+
         return [
-            r for r in results
+            r for r in all_results
             if r.get("business_status") not in ("CLOSED_PERMANENTLY", "CLOSED_TEMPORARILY")
         ]
