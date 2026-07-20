@@ -83,15 +83,19 @@ def test_parse_review_info_maps_fields():
     assert info.review_count == 312
     assert info.price_level == "$$$"
     assert info.cuisine_types == ["French", "Wine Bars"]
-    assert info.is_open_now is True
+    # Yelp search gives no current-status signal, so is_open_now is always unknown.
+    assert info.is_open_now is None
+    assert info.business_status == "OPERATIONAL"
     assert info.provider_url == "https://yelp.com/biz/bistro"
     assert info.provider == "yelp"
 
 
 def test_parse_review_info_closed_restaurant():
+    # Yelp's is_closed means PERMANENTLY closed — a durable status, not "closed now".
     biz = _yelp_business(is_closed=True)
     info = _parse_review_info(biz)
-    assert info.is_open_now is False
+    assert info.is_open_now is None
+    assert info.business_status == "CLOSED_PERMANENTLY"
 
 
 def test_parse_review_info_unknown_open_status():
@@ -99,6 +103,7 @@ def test_parse_review_info_unknown_open_status():
     del biz["is_closed"]
     info = _parse_review_info(biz)
     assert info.is_open_now is None
+    assert info.business_status is None
 
 
 # ---------------------------------------------------------------------------
@@ -144,20 +149,13 @@ def test_combined_score_higher_rating_wins_over_extra_distance():
     assert _combined_score(high_rated_far) > _combined_score(low_rated_close)
 
 
-def test_combined_score_open_now_beats_unknown_status():
-    """A restaurant confirmed open should outscore an identical one with unknown status."""
-    open_now = _result_item(rating=4.0, is_open_now=True)
-    status_unknown = _result_item(rating=4.0, is_open_now=None)
+def test_combined_score_ignores_current_open_status():
+    """Current open-now status must NOT affect ranking — users plan future stops."""
+    open_now = _combined_score(_result_item(rating=4.0, is_open_now=True))
+    closed_now = _combined_score(_result_item(rating=4.0, is_open_now=False))
+    unknown = _combined_score(_result_item(rating=4.0, is_open_now=None))
 
-    assert _combined_score(open_now) > _combined_score(status_unknown)
-
-
-def test_combined_score_closed_penalised():
-    """A confirmed-closed restaurant should score lower than one with unknown status."""
-    closed = _result_item(rating=4.0, is_open_now=False)
-    unknown = _result_item(rating=4.0, is_open_now=None)
-
-    assert _combined_score(closed) < _combined_score(unknown)
+    assert open_now == closed_now == unknown
 
 
 def test_combined_score_no_reviews_uses_default_rating():
@@ -278,20 +276,29 @@ async def test_google_provider_failure_returns_none_without_raising():
 
 
 def test_parse_google_place_permanently_closed():
-    # Even if open_now is True (unlikely for closed places but good for testing),
-    # business_status should take precedence.
+    # Durable closure lives in business_status; is_open_now stays decoupled (transient only).
     place = _google_place(open_now=True, business_status="CLOSED_PERMANENTLY")
     info = _parse_google_place(place)
-    assert info.is_open_now is False
+    assert info.business_status == "CLOSED_PERMANENTLY"
+    assert info.is_open_now is True
 
 
 def test_parse_google_place_temporarily_closed():
-    place = _google_place(open_now=True, business_status="CLOSED_TEMPORARILY")
+    place = _google_place(open_now=False, business_status="CLOSED_TEMPORARILY")
     info = _parse_google_place(place)
+    assert info.business_status == "CLOSED_TEMPORARILY"
     assert info.is_open_now is False
 
 
 def test_parse_google_place_operational():
     place = _google_place(open_now=True, business_status="OPERATIONAL")
     info = _parse_google_place(place)
+    assert info.business_status == "OPERATIONAL"
     assert info.is_open_now is True
+
+
+def test_parse_google_place_weekday_text_from_opening_hours():
+    place = _google_place(open_now=True)
+    place["opening_hours"]["weekday_text"] = ["Monday: 9:00 AM – 5:00 PM", "Tuesday: Closed"]
+    info = _parse_google_place(place)
+    assert info.weekday_text == ["Monday: 9:00 AM – 5:00 PM", "Tuesday: Closed"]

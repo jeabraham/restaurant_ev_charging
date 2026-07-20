@@ -72,7 +72,9 @@
                                   "review_count": { "type": "integer", "description": "Number of reviews." },
                                   "price_level": { "type": "string", "nullable": true, "description": "Price level indicator, e.g. '$', '$$', '$$$', '$$$$'." },
                                   "cuisine_types": { "type": "array", "items": { "type": "string" }, "description": "Cuisine or category labels from the review provider." },
-                                  "is_open_now": { "type": "boolean", "nullable": true, "description": "Whether the restaurant is currently open. Null if unknown." },
+                                  "is_open_now": { "type": "boolean", "nullable": true, "description": "TRANSIENT current open-now status. Null if unknown. Ignore this unless the user is arriving right now — users usually plan a future stop, so this should not drive recommendations." },
+                                  "business_status": { "type": "string", "nullable": true, "enum": ["OPERATIONAL", "CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY", null], "description": "Durable operating status. CLOSED_PERMANENTLY businesses are excluded from results; CLOSED_TEMPORARILY should be flagged to the user. Null if unknown." },
+                                  "weekday_text": { "type": "array", "nullable": true, "items": { "type": "string" }, "description": "Human-readable weekly opening hours, e.g. ['Monday: 9:00 AM – 5:00 PM', ...]. Use to tell the user which meals (breakfast/lunch/dinner) or days a place is closed. Null when hours are unavailable (Geoapify-only result, no Google Places key, or hours lookup disabled)." },
                                   "is_fast_food": { "type": "boolean", "description": "Whether the restaurant is classified as fast food by the review provider." },
                                   "provider_url": { "type": "string", "description": "Direct link to the restaurant's page on the review provider." },
                                   "provider": { "type": "string", "description": "Review data source, e.g. 'yelp'." }

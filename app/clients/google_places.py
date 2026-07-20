@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 _FIND_PLACE_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
 _FIND_PLACE_FIELDS = "place_id,name,rating,user_ratings_total,price_level,opening_hours,types,business_status"
+_PLACE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+# weekday_text and periods are only returned by Place Details, not Find Place / Nearby Search.
+_PLACE_DETAILS_FIELDS = "business_status,opening_hours"
 _MATCH_RADIUS_M = 200
 _NEARBY_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
 _NEARBY_SEARCH_FIELDS = "place_id,name,geometry,rating,user_ratings_total,opening_hours,business_status,vicinity"
@@ -60,6 +63,37 @@ class GooglePlacesClient:
         if not candidates:
             return None
         return candidates[0]
+
+    async def place_details(self, place_id: str) -> dict[str, Any] | None:
+        """Fetch Place Details for a place_id (business_status + full opening hours).
+
+        Returns the ``result`` dict (which may contain ``opening_hours.weekday_text``),
+        or None if no result is found. Raises UpstreamHttpError on API failures.
+        """
+        params = {
+            "place_id": place_id,
+            "fields": _PLACE_DETAILS_FIELDS,
+            "key": self._api_key,
+        }
+        response = await self._http_client.get_json(
+            url=_PLACE_DETAILS_URL,
+            params=params,
+            headers=None,
+            service_name="GOOGLE_PLACES",
+        )
+        if not isinstance(response, dict):
+            return None
+
+        status = response.get("status", "")
+        if status not in ("OK", "ZERO_RESULTS", ""):
+            raise UpstreamHttpError(
+                code="GOOGLE_PLACES_UPSTREAM_ERROR",
+                message=f"Google Places Details returned status {status!r}.",
+                status_code=502,
+            )
+
+        result = response.get("result")
+        return result if isinstance(result, dict) else None
 
     async def search_ev_chargers(
         self,

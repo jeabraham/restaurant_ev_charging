@@ -287,7 +287,8 @@ async def test_endpoint_enriches_with_yelp_reviews(test_client_with_yelp):
     assert reviews["rating"] == 4.5
     assert reviews["review_count"] == 320
     assert reviews["price_level"] == "$$"
-    assert reviews["is_open_now"] is True
+    assert reviews["is_open_now"] is None
+    assert reviews["business_status"] == "OPERATIONAL"
     assert reviews["provider"] == "yelp"
     assert reviews["provider_url"] == "https://yelp.com/biz/example-restaurant"
     assert reviews["cuisine_types"] == ["Canadian"]
@@ -427,6 +428,101 @@ async def test_endpoint_enriches_with_google_reviews(test_client_with_google):
         "https://www.google.com/maps/search/?api=1"
         "&query=Example%20Restaurant&query_place_id=ChIJN1t_tDeuEmsRUsoyG83frY4"
     )
+
+
+@respx.mock
+async def test_endpoint_attaches_weekday_hours(test_client_with_google):
+    """Weekly opening hours from Place Details are attached to final Google-matched results."""
+    respx.get("https://api.openchargemap.io/v3/poi").mock(
+        return_value=Response(200, json=[_ocm_station(station_id=100, power_kw=150, connection_type_id=33, connection_title="CCS")])
+    )
+    respx.get("https://api.geoapify.com/v2/places").mock(return_value=Response(200, json=_geoapify_features()))
+    respx.get("https://maps.googleapis.com/maps/api/place/findplacefromtext/json").mock(
+        return_value=Response(
+            200,
+            json={
+                "status": "OK",
+                "candidates": [
+                    {
+                        "place_id": "ChIJExample",
+                        "name": "Example Restaurant",
+                        "rating": 4.4,
+                        "user_ratings_total": 210,
+                        "opening_hours": {"open_now": True},
+                        "types": ["restaurant", "food"],
+                    }
+                ],
+            },
+        )
+    )
+    respx.get("https://maps.googleapis.com/maps/api/place/details/json").mock(
+        return_value=Response(
+            200,
+            json={
+                "status": "OK",
+                "result": {
+                    "business_status": "OPERATIONAL",
+                    "opening_hours": {
+                        "weekday_text": [
+                            "Monday: Closed",
+                            "Tuesday: 5:00 – 9:00 PM",
+                        ]
+                    },
+                },
+            },
+        )
+    )
+
+    response = await test_client_with_google.post(
+        "/find-dining-chargers",
+        json={"latitude": 51.467, "longitude": -109.156},
+    )
+
+    assert response.status_code == 200
+    results = response.json()["results"]
+    example = next(r for r in results if r["restaurant"]["name"] == "Example Restaurant")
+    reviews = example["restaurant"]["reviews"]
+    assert reviews["weekday_text"] == ["Monday: Closed", "Tuesday: 5:00 – 9:00 PM"]
+    assert reviews["business_status"] == "OPERATIONAL"
+
+
+@respx.mock
+async def test_permanently_closed_restaurant_excluded(test_client_with_google):
+    """A CLOSED_PERMANENTLY restaurant is dropped from results regardless of open-now status."""
+    respx.get("https://api.openchargemap.io/v3/poi").mock(
+        return_value=Response(200, json=[_ocm_station(station_id=100, power_kw=150, connection_type_id=33, connection_title="CCS")])
+    )
+    respx.get("https://api.geoapify.com/v2/places").mock(return_value=Response(200, json=_geoapify_features()))
+    # Every review lookup reports permanent closure (even though open_now is True).
+    respx.get("https://maps.googleapis.com/maps/api/place/findplacefromtext/json").mock(
+        return_value=Response(
+            200,
+            json={
+                "status": "OK",
+                "candidates": [
+                    {
+                        "place_id": "ChIJClosed",
+                        "name": "Example Restaurant",
+                        "rating": 4.6,
+                        "user_ratings_total": 300,
+                        "business_status": "CLOSED_PERMANENTLY",
+                        "opening_hours": {"open_now": True},
+                        "types": ["restaurant", "food"],
+                    }
+                ],
+            },
+        )
+    )
+
+    response = await test_client_with_google.post(
+        "/find-dining-chargers",
+        json={"latitude": 51.467, "longitude": -109.156},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["results"] == []
+    assert "No qualifying charger-restaurant pairs were found." in body["diagnostics"]["warnings"]
 
 
 @respx.mock

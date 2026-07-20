@@ -68,6 +68,7 @@ async def lifespan(app: FastAPI):
         restaurant_search_geoapify=settings.restaurant_search_geoapify,
         restaurant_search_google=settings.restaurant_search_google,
         enable_charger_reviews=settings.enable_reviews,
+        enable_opening_hours=settings.enable_opening_hours,
     )
 
     try:

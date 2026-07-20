@@ -17,11 +17,15 @@ class ReviewInfo:
     review_count: int
     price_level: str | None  # "$", "$$", "$$$", "$$$$"
     cuisine_types: list[str]
-    is_open_now: bool | None  # None means unknown
+    is_open_now: bool | None  # Transient "open right now" status. None means unknown.
     provider_url: str
     provider: str
     is_fast_food: bool = False
     place_id: str | None = None  # Google place_id when provider is Google; None otherwise
+    # Durable status: "OPERATIONAL" | "CLOSED_TEMPORARILY" | "CLOSED_PERMANENTLY" | None.
+    business_status: str | None = None
+    # Human-readable weekly hours, e.g. ["Monday: 9:00 AM – 5:00 PM", ...]. None if unknown.
+    weekday_text: list[str] | None = None
 
 
 class ReviewProvider(Protocol):
@@ -60,8 +64,14 @@ def _parse_review_info(business: dict[str, Any]) -> ReviewInfo:
         if isinstance(cat, dict) and cat.get("title")
     ]
 
+    # Yelp's `is_closed` means the business is *permanently* closed — a durable fact,
+    # not "closed right now". Map it to business_status; Yelp search gives no current
+    # open-now signal, so is_open_now is unknown.
     is_closed = business.get("is_closed")
-    is_open_now: bool | None = (not is_closed) if is_closed is not None else None
+    if is_closed is None:
+        business_status: str | None = None
+    else:
+        business_status = "CLOSED_PERMANENTLY" if is_closed else "OPERATIONAL"
 
     # Detect fast food or chains.
     is_fast_food = is_likely_chain_or_fast_food(business.get("name", ""), categories)
@@ -71,10 +81,11 @@ def _parse_review_info(business: dict[str, Any]) -> ReviewInfo:
         review_count=int(business.get("review_count") or 0),
         price_level=business.get("price"),
         cuisine_types=categories,
-        is_open_now=is_open_now,
+        is_open_now=None,
         provider_url=business.get("url", ""),
         provider="yelp",
         is_fast_food=is_fast_food,
+        business_status=business_status,
     )
 
 
@@ -198,12 +209,20 @@ def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
     price_raw = place.get("price_level")
     price_level = _GOOGLE_PRICE_LEVEL.get(price_raw) if isinstance(price_raw, int) else None
 
-    if is_google_place_closed(place):
-        is_open_now: bool | None = False
-    else:
-        opening_hours = place.get("opening_hours") or {}
-        open_now_raw = opening_hours.get("open_now")
-        is_open_now = open_now_raw if isinstance(open_now_raw, bool) else None
+    # is_open_now reflects ONLY the transient current status; durable closure is carried
+    # separately in business_status so callers can distinguish "closed right now" from
+    # "permanently/temporarily closed".
+    opening_hours = place.get("opening_hours") or {}
+    open_now_raw = opening_hours.get("open_now")
+    is_open_now: bool | None = open_now_raw if isinstance(open_now_raw, bool) else None
+
+    business_status_raw = place.get("business_status")
+    business_status = business_status_raw if isinstance(business_status_raw, str) else None
+
+    weekday_text_raw = opening_hours.get("weekday_text")
+    weekday_text = (
+        weekday_text_raw if isinstance(weekday_text_raw, list) and weekday_text_raw else None
+    )
 
     types = place.get("types") or []
     cuisine_types = [
@@ -236,4 +255,6 @@ def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
         provider="google",
         is_fast_food=is_fast_food,
         place_id=place_id if isinstance(place_id, str) else None,
+        business_status=business_status,
+        weekday_text=weekday_text,
     )

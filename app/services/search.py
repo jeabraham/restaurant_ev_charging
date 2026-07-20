@@ -37,8 +37,6 @@ logger = logging.getLogger(__name__)
 # Combined ranking weights.  Adjust these if the balance feels wrong.
 # A 5-star restaurant is worth an extra ~300 m walk or ~60 kW of charger power.
 _RATING_WEIGHT = 15.0
-_OPEN_BONUS = 10.0      # confirmed open now
-_CLOSED_PENALTY = 20.0  # confirmed closed now
 _DEFAULT_RATING = 3.0   # used when no review data is available
 _POWER_WEIGHT = 0.3     # kW → score points
 _DISTANCE_COST = 0.05   # metres → score points lost
@@ -72,6 +70,7 @@ class DiningChargerService:
         restaurant_search_geoapify: bool = True,
         restaurant_search_google: bool = False,
         enable_charger_reviews: bool = True,
+        enable_opening_hours: bool = True,
     ) -> None:
         self._ocm_client = ocm_client
         self._geo_client = geo_client
@@ -80,6 +79,7 @@ class DiningChargerService:
         self._restaurant_search_geoapify = restaurant_search_geoapify
         self._restaurant_search_google = restaurant_search_google
         self._enable_charger_reviews = enable_charger_reviews
+        self._enable_opening_hours = enable_opening_hours
 
     async def find(self, payload: FindDiningChargersRequest) -> dict[str, Any]:
         locations = await self._ocm_client.nearby_stations(
@@ -450,6 +450,11 @@ class DiningChargerService:
         if self._review_provider is not None:
             candidates = await self._enrich(candidates)
 
+        # Drop permanently-closed businesses outright — they are never a valid recommendation.
+        # (Current "open now" status is deliberately NOT used to exclude, since the user is
+        # usually planning a future stop.)
+        candidates = [item for item in candidates if not _is_permanently_closed(item)]
+
         # Classify each candidate into a recommendation tier.
         for item in candidates:
             item["tier"] = _recommendation_tier(item, preferred_radius_m)
@@ -468,6 +473,12 @@ class DiningChargerService:
             )
         )
         results = candidates[: payload.max_results]
+
+        # Fetch full weekly opening hours for the final Google-sourced results so the agent
+        # can discuss which meals/days a place is closed. Bounded by max_results, and only
+        # for results that already have a Google place_id.
+        if self._google_client and self._enable_opening_hours:
+            await self._attach_opening_hours(results)
 
         # Finalise each result: upgrade the restaurant's Maps link to a place_id-anchored
         # URL when a genuine Google place_id is known, and drop private helper fields.
@@ -570,6 +581,8 @@ class DiningChargerService:
                     "price_level": info.price_level,
                     "cuisine_types": info.cuisine_types,
                     "is_open_now": info.is_open_now,
+                    "business_status": info.business_status,
+                    "weekday_text": info.weekday_text,
                     "provider_url": info.provider_url,
                     "provider": info.provider,
                     "is_fast_food": info.is_fast_food,
@@ -581,6 +594,42 @@ class DiningChargerService:
             return item
 
         return list(await asyncio.gather(*[enrich_one(item) for item in results]))
+
+    async def _attach_opening_hours(self, results: list[dict]) -> None:
+        """Fetch weekly opening hours (Place Details) for Google-identified results.
+
+        Attaches ``reviews.weekday_text`` and refines ``reviews.business_status`` in place.
+        Failures are logged and left as-is so the response is never blocked by this pass.
+        """
+
+        async def fetch_one(item: dict) -> None:
+            place_id = item.get("_google_place_id")
+            if not place_id:
+                return
+            try:
+                details = await self._google_client.place_details(place_id)  # type: ignore[union-attr]
+            except Exception:
+                logger.warning("Failed to fetch Google opening hours for %r", item["restaurant"]["name"])
+                return
+            if not details:
+                return
+            reviews = item["restaurant"].get("reviews")
+            if reviews is None:
+                return
+            opening_hours = details.get("opening_hours") or {}
+            weekday_text = opening_hours.get("weekday_text")
+            if isinstance(weekday_text, list) and weekday_text:
+                reviews["weekday_text"] = weekday_text
+            business_status = details.get("business_status")
+            if isinstance(business_status, str):
+                reviews["business_status"] = business_status
+
+        await asyncio.gather(*[fetch_one(item) for item in results])
+
+
+def _is_permanently_closed(item: dict) -> bool:
+    reviews = item["restaurant"].get("reviews")
+    return bool(reviews) and reviews.get("business_status") == "CLOSED_PERMANENTLY"
 
 
 def _item_is_fast_food(item: dict) -> bool:
@@ -623,8 +672,10 @@ def _combined_score(item: dict) -> float:
 
     reviews = item["restaurant"].get("reviews")
     rating = reviews["rating"] if reviews else _DEFAULT_RATING
-    is_open_now = reviews.get("is_open_now") if reviews else None
-    open_adjustment = _OPEN_BONUS if is_open_now is True else (-_CLOSED_PENALTY if is_open_now is False else 0.0)
+
+    # Current open-now status intentionally does NOT affect ranking: users are usually
+    # planning a future stop, so transient status is irrelevant. Durable closure is
+    # handled by excluding CLOSED_PERMANENTLY results, not by scoring.
 
     fast_food_penalty = 0.0
     price_bonus = 0.0
@@ -642,7 +693,6 @@ def _combined_score(item: dict) -> float:
         + rating * _RATING_WEIGHT
         + charger_rating * _CHARGER_RATING_WEIGHT
         - distance_m * _DISTANCE_COST
-        + open_adjustment
         - fast_food_penalty
         + price_bonus
     )
