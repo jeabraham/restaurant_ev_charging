@@ -1,5 +1,7 @@
 from app.services.filtering import (
+    charger_speed_label,
     dedupe_geoapify_place_key,
+    is_fast_food_category,
     normalize_connector,
 )
 
@@ -73,6 +75,29 @@ def test_nacs_l2_connector_filtering():
     assert normalize_connector(tesla_dest, requested_ccs=False, requested_nacs=True, requested_l2=False) is None
     # nacs not requested — rejected
     assert normalize_connector(tesla_dest, requested_ccs=False, requested_nacs=False, requested_l2=True) is None
+
+
+def test_charger_speed_label():
+    assert charger_speed_label(150) == "DC_FAST"
+    assert charger_speed_label(50) == "DC_FAST"
+    assert charger_speed_label(49.9) == "L2"
+    assert charger_speed_label(7) == "L2"
+    assert charger_speed_label(3.0) == "L2"
+    assert charger_speed_label(1.4) == "UNKNOWN"
+    assert charger_speed_label(0) == "UNKNOWN"
+    assert charger_speed_label(None) == "UNKNOWN"
+
+
+def test_is_fast_food_category():
+    assert is_fast_food_category({"properties": {"categories": ["catering.fast_food"]}}) is True
+    assert (
+        is_fast_food_category({"properties": {"categories": ["catering.fast_food.burger"]}})
+        is True
+    )
+    assert is_fast_food_category({"properties": {"categories": ["catering.restaurant"]}}) is False
+    assert is_fast_food_category({"properties": {"categories": []}}) is False
+    assert is_fast_food_category({"properties": {}}) is False
+    assert is_fast_food_category({}) is False
 
 
 def test_deduplication_key_fallback():

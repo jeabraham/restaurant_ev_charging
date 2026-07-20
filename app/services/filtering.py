@@ -55,6 +55,32 @@ def normalize_connector(
     return None
 
 
+def charger_speed_label(power_kw: float | int | None) -> str:
+    """Classify a charger by its maximum power.
+
+    Returns "DC_FAST" (>= FAST_CHARGE_MIN_KW), "L2" (>= L2_MIN_KW), or "UNKNOWN"
+    (e.g. Google Places fallback chargers where power data is unavailable).
+    """
+    if power_kw is None:
+        return "UNKNOWN"
+    if power_kw >= FAST_CHARGE_MIN_KW:
+        return "DC_FAST"
+    if power_kw >= L2_MIN_KW:
+        return "L2"
+    return "UNKNOWN"
+
+
+def is_fast_food_category(place: dict[str, Any]) -> bool:
+    """True when a place's categories mark it as fast food.
+
+    Uses the Geoapify/Google-shaped ``catering.fast_food`` category so tiering works
+    even when no review provider (which sets ``reviews.is_fast_food``) is configured.
+    """
+    properties = place.get("properties") or {}
+    categories = properties.get("categories") or []
+    return any(str(category).startswith("catering.fast_food") for category in categories)
+
+
 def station_is_explicitly_non_operational(station: dict[str, Any]) -> bool:
     status = station.get("StatusType") or {}
     is_operational = status.get("IsOperational")

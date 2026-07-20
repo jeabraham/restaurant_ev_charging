@@ -72,6 +72,37 @@ def _geoapify_features():
     }
 
 
+def _tiering_features():
+    """One near independent restaurant, several near fast-food places, and one far
+    independent restaurant (~1500 m). Used to exercise tiering and the far-restaurant
+    regression (a good far restaurant must not be truncated away before ranking)."""
+    features = [
+        {
+            "properties": {
+                "name": "Far Independent Bistro",
+                "formatted": "Far St",
+                "lat": 51.4672,
+                "lon": -109.1355,  # ~1500 m east of the charger
+                "categories": ["catering.restaurant"],
+            }
+        },
+    ]
+    # Five near fast-food places, each a distinct name/coordinate.
+    for i in range(5):
+        features.append(
+            {
+                "properties": {
+                    "name": f"Quick Bite {i}",
+                    "formatted": f"{i} Near Ave",
+                    "lat": 51.4670 + i * 0.0001,
+                    "lon": -109.1569,
+                    "categories": ["catering.fast_food"],
+                }
+            }
+        )
+    return {"features": features}
+
+
 @pytest.fixture
 async def test_client_with_yelp(monkeypatch):
     monkeypatch.setenv("YELP_API_KEY", "test_yelp_key")
@@ -125,6 +156,95 @@ async def test_endpoint_success_and_sorting(test_client):
     assert body["diagnostics"]["qualifying_restaurant_charger_pairs"] == 2
     assert body["results"][0]["distance"]["walking_distance_verified"] is False
     assert body["results"][0]["charger"]["maximum_power_kw"] >= body["results"][1]["charger"]["maximum_power_kw"]
+
+
+@respx.mock
+async def test_endpoint_tags_tier_and_charger_speed(test_client):
+    respx.get("https://api.openchargemap.io/v3/poi").mock(
+        return_value=Response(200, json=[_ocm_station(station_id=100, power_kw=150, connection_type_id=33, connection_title="CCS")])
+    )
+    respx.get("https://api.geoapify.com/v2/places").mock(return_value=Response(200, json=_geoapify_features()))
+
+    response = await test_client.post(
+        "/find-dining-chargers",
+        json={
+            "latitude": 51.467,
+            "longitude": -109.156,
+            "restaurant_radius_m": 2000,
+            "l2": True,
+            "include_fast_food": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    results = body["results"]
+    # Every result is tagged with a tier and a charger speed.
+    for r in results:
+        assert r["tier"] in {"primary", "distant_good", "slow_charger", "fast_food", "other"}
+        assert r["charger"]["charger_speed"] in {"DC_FAST", "L2", "UNKNOWN"}
+        assert r["charger"]["is_fast_charger"] is True
+
+    tiers = {r["restaurant"]["name"]: r["tier"] for r in results}
+    # Category-based fast-food detection works even without a review provider.
+    assert tiers["Example Restaurant"] == "primary"
+    assert tiers["Fast Food Only"] == "fast_food"
+    assert body["diagnostics"]["tier_counts"].get("primary") == 1
+    assert body["diagnostics"]["tier_counts"].get("fast_food") == 1
+    assert "preferred_radius_m" in body["search"]
+
+
+@respx.mock
+async def test_include_fast_food_false_drops_fast_food(test_client):
+    respx.get("https://api.openchargemap.io/v3/poi").mock(
+        return_value=Response(200, json=[_ocm_station(station_id=100, power_kw=150, connection_type_id=33, connection_title="CCS")])
+    )
+    respx.get("https://api.geoapify.com/v2/places").mock(return_value=Response(200, json=_geoapify_features()))
+
+    response = await test_client.post(
+        "/find-dining-chargers",
+        json={
+            "latitude": 51.467,
+            "longitude": -109.156,
+            "restaurant_radius_m": 2000,
+            "include_fast_food": False,
+        },
+    )
+
+    assert response.status_code == 200
+    names = [r["restaurant"]["name"] for r in response.json()["results"]]
+    assert "Fast Food Only" not in names
+    assert "Example Restaurant" in names
+
+
+@respx.mock
+async def test_far_good_restaurant_not_truncated(test_client):
+    """Regression: a good but far restaurant must outrank near fast food and survive a
+    small max_results, instead of being truncated by distance before ranking."""
+    respx.get("https://api.openchargemap.io/v3/poi").mock(
+        return_value=Response(200, json=[_ocm_station(station_id=100, power_kw=150, connection_type_id=33, connection_title="CCS")])
+    )
+    respx.get("https://api.geoapify.com/v2/places").mock(return_value=Response(200, json=_tiering_features()))
+
+    response = await test_client.post(
+        "/find-dining-chargers",
+        json={
+            "latitude": 51.467,
+            "longitude": -109.156,
+            "restaurant_radius_m": 2000,
+            "include_fast_food": True,
+            "max_results": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    results = response.json()["results"]
+    by_name = {r["restaurant"]["name"]: r for r in results}
+    # The far independent restaurant survives and is tiered as a "distant_good" fallback,
+    # ranked above the near fast-food places.
+    assert "Far Independent Bistro" in by_name
+    assert by_name["Far Independent Bistro"]["tier"] == "distant_good"
+    assert results[0]["restaurant"]["name"] == "Far Independent Bistro"
 
 
 @respx.mock
