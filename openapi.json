@@ -39,7 +39,8 @@
                         "latitude": { "type": "number" },
                         "longitude": { "type": "number" },
                         "radius_km": { "type": "number" },
-                        "restaurant_radius_m": { "type": "integer" }
+                        "restaurant_radius_m": { "type": "integer" },
+                        "preferred_radius_m": { "type": "integer", "description": "Effective near/far boundary used for tiering (clamped to restaurant_radius_m)." }
                       }
                     },
                     "search_location": { "type": "string", "nullable": true },
@@ -48,6 +49,11 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "tier": {
+                            "type": "string",
+                            "enum": ["primary", "distant_good", "slow_charger", "fast_food", "other"],
+                            "description": "Recommendation tier. 'primary' = good independent restaurant within preferred_radius_m of a DC fast charger — recommend these first. When none exist, offer the fallbacks: 'distant_good' (good restaurant, longer walk to a fast charger), 'slow_charger' (good restaurant at a slow L2 charger), 'fast_food' (highly-rated fast food/chain near a fast charger). 'other' = more heavily compromised."
+                          },
                           "restaurant": {
                             "type": "object",
                             "properties": {
@@ -80,6 +86,8 @@
                               "name": { "type": "string" },
                               "network": { "type": "string", "nullable": true },
                               "maximum_power_kw": { "type": "number" },
+                              "charger_speed": { "type": "string", "enum": ["DC_FAST", "L2", "UNKNOWN"], "description": "Charger speed class. 'DC_FAST' (>=50 kW) suits a dining stop; 'L2' is slow (overnight only); 'UNKNOWN' for Google Places fallback chargers with no power data." },
+                              "is_fast_charger": { "type": "boolean", "description": "True when charger_speed is DC_FAST." },
                               "status": { "type": "string" },
                               "compatibility_notes": { "type": "string", "nullable": true },
                               "openchargemap_url": { "type": "string" }
@@ -114,6 +122,11 @@
                       "properties": {
                         "qualifying_chargers": { "type": "integer" },
                         "qualifying_restaurant_charger_pairs": { "type": "integer" },
+                        "tier_counts": {
+                          "type": "object",
+                          "description": "Number of returned results in each recommendation tier (keys: primary, distant_good, slow_charger, fast_food, other).",
+                          "additionalProperties": { "type": "integer" }
+                        },
                         "warnings": { "type": "array", "items": { "type": "string" } }
                       }
                     }
@@ -168,7 +181,15 @@
             "exclusiveMinimum": 0.0,
             "title": "Restaurant Radius M",
             "default": 500,
-            "description": "Maximum walking distance in metres between a charger and a restaurant. Default 500 m (~6 min walk)."
+            "description": "Maximum walking distance in metres between a charger and a restaurant. Default 500 m (~6 min walk). Set to 2000 to also surface the 'distant_good' fallback tier."
+          },
+          "preferred_radius_m": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Preferred Radius M",
+            "default": 800,
+            "description": "Comfortable walking distance in metres separating a 'primary' recommendation from the 'distant_good' fallback. Default 800 m (~10 min walk). Clamped to restaurant_radius_m."
           },
           "nacs": {
             "type": "boolean",
@@ -187,6 +208,12 @@
             "title": "Tesla Only",
             "default": false,
             "description": "Restrict results to Tesla Supercharger network only. Overrides nacs and ccs filters when true."
+          },
+          "include_fast_food": {
+            "type": "boolean",
+            "title": "Include Fast Food",
+            "default": true,
+            "description": "Include fast-food/chain restaurants in results (still labeled via reviews.is_fast_food and the 'fast_food' tier). Set false to exclude them entirely. Keep true so the fast-food fallback tier is available when no good independent restaurant exists."
           },
           "max_results": {
             "type": "integer",

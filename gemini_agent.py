@@ -68,7 +68,15 @@ _TOOLS = types.Tool(
                     ),
                     "restaurant_radius_m": types.Schema(
                         type=types.Type.INTEGER,
-                        description="Max metres between a charger and a restaurant (default 500, max 2000).",
+                        description="Max metres between a charger and a restaurant (default 500, max 2000). Use 2000 to also surface the 'distant_good' fallback tier.",
+                    ),
+                    "preferred_radius_m": types.Schema(
+                        type=types.Type.INTEGER,
+                        description="Comfortable walking distance in metres (default 800). Results within this range at a fast charger are tier 'primary'; farther ones become 'distant_good'.",
+                    ),
+                    "include_fast_food": types.Schema(
+                        type=types.Type.BOOLEAN,
+                        description="Include fast-food/chain restaurants (default true). Keep true so the 'fast_food' fallback tier is available when no good independent restaurant exists.",
                     ),
                     "nacs": types.Schema(
                         type=types.Type.BOOLEAN,

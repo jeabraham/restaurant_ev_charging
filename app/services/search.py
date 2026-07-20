@@ -10,8 +10,11 @@ from app.clients.google_places import GooglePlacesClient
 from app.clients.openchargemap import OpenChargeMapClient
 from app.schemas import FindDiningChargersRequest
 from app.services.filtering import (
+    FAST_CHARGE_MIN_KW,
+    charger_speed_label,
     detect_tesla_restriction,
     google_place_to_geoapify_shape,
+    is_fast_food_category,
     is_qualifying_place,
     is_valid_website,
     normalize_connector,
@@ -41,6 +44,21 @@ _DISTANCE_COST = 0.05   # metres → score points lost
 _FAST_FOOD_PENALTY = 50.0  # Penalty for fast food restaurants and chains
 _PRICE_BONUS = 5.0      # Bonus per price level above "$"
 _CHARGER_RATING_WEIGHT = 10.0  # Google charger rating → score points
+
+# Recommendation tiers, best (0) to worst.  The agent recommends "primary" when any
+# good option exists, and otherwise offers the fallback tiers as labeled compromises.
+_TIER_RANK = {
+    "primary": 0,        # fast charger, good restaurant, comfortable walk
+    "distant_good": 1,   # fast charger, good restaurant, longer walk
+    "slow_charger": 2,   # slow L2 charger, good restaurant
+    "fast_food": 3,      # fast charger, fast-food/chain, comfortable walk
+    "other": 4,          # anything more compromised (slow+far, far+fast-food, unknown, …)
+}
+
+# Cap on how many restaurants are enriched with review data per (speed × near/far)
+# bucket.  Bounds review-API calls while guaranteeing far-but-good and slow-charger
+# candidates survive to be tiered (rather than being truncated away by distance first).
+_ENRICH_PER_BUCKET = 15
 
 
 class DiningChargerService:
@@ -133,6 +151,11 @@ class DiningChargerService:
                         key=lambda connector: (connector["type"], -connector["power_kw"]),
                     ),
                     "maximum_power_kw": max(c["power_kw"] for c in connector_types),
+                    "charger_speed": charger_speed_label(
+                        max(c["power_kw"] for c in connector_types)
+                    ),
+                    "is_fast_charger": max(c["power_kw"] for c in connector_types)
+                    >= FAST_CHARGE_MIN_KW,
                     "latitude": station_lat,
                     "longitude": station_lon,
                     "status": station_status_value(station),
@@ -169,6 +192,8 @@ class DiningChargerService:
                         "network": None,
                         "connector_types": [],
                         "maximum_power_kw": 0,
+                        "charger_speed": "UNKNOWN",
+                        "is_fast_charger": False,
                         "latitude": glat,
                         "longitude": glon,
                         "status": "Unknown",
@@ -360,6 +385,9 @@ class DiningChargerService:
                                 restaurant_lon,
                             ),
                         },
+                        # Category-based fast-food signal, used for tiering when no review
+                        # provider is configured (reviews.is_fast_food is authoritative when present).
+                        "is_fast_food_category": is_fast_food_category(place),
                         "pairs": [pair],
                     }
                 else:
@@ -387,6 +415,8 @@ class DiningChargerService:
                     if k not in ("connector_types", "latitude", "longitude", "openchargemap_poi_id")
                 },
                 "distance": primary["distance"],
+                # Private, popped before returning; feeds tiering when reviews are absent.
+                "_is_fast_food_category": entry.get("is_fast_food_category", False),
             }
             if len(pairs) > 1:
                 result["other_close_chargers"] = [
@@ -403,19 +433,43 @@ class DiningChargerService:
                 ]
             results.append(result)
 
-        results.sort(
+        preferred_radius_m = min(payload.preferred_radius_m, payload.restaurant_radius_m)
+
+        # Select a bounded, diversity-preserving candidate set to enrich with reviews.
+        # Stratifying by (charger speed × near/far) guarantees far-but-good and slow-charger
+        # candidates survive to be tiered, instead of being truncated away by distance first.
+        candidates = self._select_enrichment_candidates(results, preferred_radius_m)
+
+        # Enrich with review data (needed for accurate fast-food detection and scoring).
+        if self._review_provider is not None:
+            candidates = await self._enrich(candidates)
+
+        # Classify each candidate into a recommendation tier.
+        for item in candidates:
+            item["tier"] = _recommendation_tier(item, preferred_radius_m)
+
+        if not payload.include_fast_food:
+            candidates = [item for item in candidates if not _item_is_fast_food(item)]
+
+        # Tier-aware ranking: best tier first, combined score within a tier.  When good
+        # primaries exist they fill the list; when they don't, the fallback tiers rise to
+        # the top and survive truncation.
+        candidates.sort(
             key=lambda item: (
-                item["distance"]["straight_line_metres"],
-                -item["charger"]["maximum_power_kw"],
+                _TIER_RANK.get(item["tier"], _TIER_RANK["other"]),
+                -_combined_score(item),
                 item["restaurant"]["name"].lower(),
             )
         )
+        results = candidates[: payload.max_results]
 
-        results = results[: payload.max_results]
+        # Drop the private tiering helper before returning.
+        for item in results:
+            item.pop("_is_fast_food_category", None)
 
-        # Enrich with review data and re-rank using combined score.
-        if self._review_provider is not None:
-            results = await self._enrich_and_rerank(results)
+        tier_counts: dict[str, int] = {}
+        for item in results:
+            tier_counts[item["tier"]] = tier_counts.get(item["tier"], 0) + 1
 
         warnings: list[str] = []
         if not results:
@@ -427,6 +481,7 @@ class DiningChargerService:
                 "longitude": payload.longitude,
                 "radius_km": payload.radius_km,
                 "restaurant_radius_m": payload.restaurant_radius_m,
+                "preferred_radius_m": preferred_radius_m,
             },
             "search_location": self._best_locality(locality_candidates),
             "results": results,
@@ -435,6 +490,7 @@ class DiningChargerService:
                 "qualifying_chargers": len(qualifying_chargers),
                 "geoapify_places_received": geoapify_places_received,
                 "qualifying_restaurant_charger_pairs": len(results),
+                "tier_counts": tier_counts,
                 "warnings": warnings,
             },
         }
@@ -464,8 +520,33 @@ class DiningChargerService:
                 return locality
         return None
 
-    async def _enrich_and_rerank(self, results: list[dict]) -> list[dict]:
-        """Fetch review data for each restaurant in parallel and re-sort by combined score."""
+    @staticmethod
+    def _select_enrichment_candidates(
+        results: list[dict], preferred_radius_m: int
+    ) -> list[dict]:
+        """Pick a bounded set of results to enrich, preserving tier diversity.
+
+        Stratifies by the dimensions known before review lookup — charger speed
+        (fast vs. not) and near/far — and keeps the nearest ``_ENRICH_PER_BUCKET``
+        from each bucket.  This bounds review-API calls while ensuring far-but-good
+        and slow-charger candidates are not truncated away by distance before they
+        can be tiered and ranked.
+        """
+        buckets: dict[tuple[str, str], list[dict]] = {}
+        for item in results:
+            is_fast = item["charger"].get("charger_speed") == "DC_FAST"
+            near = item["distance"]["straight_line_metres"] <= preferred_radius_m
+            key = ("fast" if is_fast else "slow", "near" if near else "far")
+            buckets.setdefault(key, []).append(item)
+
+        selected: list[dict] = []
+        for bucket in buckets.values():
+            bucket.sort(key=lambda item: item["distance"]["straight_line_metres"])
+            selected.extend(bucket[:_ENRICH_PER_BUCKET])
+        return selected
+
+    async def _enrich(self, results: list[dict]) -> list[dict]:
+        """Fetch review data for each restaurant in parallel (no re-sorting)."""
 
         async def enrich_one(item: dict) -> dict:
             r = item["restaurant"]
@@ -483,9 +564,37 @@ class DiningChargerService:
                 }
             return item
 
-        enriched = list(await asyncio.gather(*[enrich_one(item) for item in results]))
-        enriched.sort(key=lambda item: (-_combined_score(item), item["restaurant"]["name"].lower()))
-        return enriched
+        return list(await asyncio.gather(*[enrich_one(item) for item in results]))
+
+
+def _item_is_fast_food(item: dict) -> bool:
+    """Whether a result is fast food.
+
+    Prefers the review provider's classification (which also catches chains); falls
+    back to the Geoapify/Google ``catering.fast_food`` category when reviews are absent.
+    """
+    reviews = item["restaurant"].get("reviews")
+    review_ff = bool(reviews.get("is_fast_food")) if reviews else False
+    return review_ff or bool(item.get("_is_fast_food_category"))
+
+
+def _recommendation_tier(item: dict, preferred_radius_m: int) -> str:
+    """Classify a charger-restaurant pair into a recommendation tier (see ``_TIER_RANK``)."""
+    speed = item["charger"].get("charger_speed")
+    is_fast = speed == "DC_FAST"
+    is_slow = speed == "L2"
+    near = item["distance"]["straight_line_metres"] <= preferred_radius_m
+    fast_food = _item_is_fast_food(item)
+
+    if is_fast and not fast_food and near:
+        return "primary"
+    if is_fast and not fast_food and not near:
+        return "distant_good"
+    if is_slow and not fast_food:
+        return "slow_charger"
+    if is_fast and fast_food and near:
+        return "fast_food"
+    return "other"
 
 
 def _combined_score(item: dict) -> float:
