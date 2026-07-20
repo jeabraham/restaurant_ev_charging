@@ -88,7 +88,7 @@ _LLOYDMINSTER_LON = -110.0081
 _CHARGER_SEARCH_RADIUS_KM = 5.0
 _RESTAURANT_RADIUS_M = 2000
 _OCM_POI_ID = 234683
-_RESTAURANT_NAME = "Blowers and Grafton"
+_RESTAURANT_NAME = "Blowers & Grafton"
 
 pytestmark = pytest.mark.skipif(
     not (_real_ocm and _real_geo and _real_google),
