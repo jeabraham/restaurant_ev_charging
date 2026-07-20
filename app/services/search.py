@@ -295,7 +295,10 @@ class DiningChargerService:
             deduped: list[dict[str, Any]] = []
             for place in all_places:
                 props = place.get("properties") or {}
-                name = (props.get("name") or "").strip().lower()
+                # Geoapify occasionally returns a non-string name (e.g. a numeric
+                # value), so coerce to str before normalising. Places with an unusable
+                # name are discarded later by is_qualifying_place().
+                name = str(props.get("name") or "").strip().lower()
                 if name not in seen_names:
                     seen_names.add(name)
                     deduped.append(place)
