@@ -274,7 +274,12 @@ class DiningChargerService:
                 geo_raw_count = len(geo_places)
                 all_places.extend(geo_places)
 
-            if self._restaurant_search_google and self._google_client:
+            # Use Google Places when explicitly enabled OR as an automatic fallback when
+            # Geoapify returned no catering places (coverage gap for small/remote locations
+            # such as Watrous and Lloydminster).  This mirrors the OCM → Google fallback
+            # used for charger discovery.
+            geo_empty = self._restaurant_search_geoapify and geo_raw_count == 0
+            if (self._restaurant_search_google or geo_empty) and self._google_client:
                 try:
                     google_food = await self._google_client.nearby_food_places(
                         latitude=charger_item["latitude"],
@@ -283,6 +288,13 @@ class DiningChargerService:
                     )
                     for gp in google_food:
                         all_places.append(google_place_to_geoapify_shape(gp))
+                    if geo_empty and google_food:
+                        logger.info(
+                            "Geoapify returned 0 catering places for charger %r; "
+                            "fell back to Google Places (%d results).",
+                            charger_item.get("name", "unknown"),
+                            len(google_food),
+                        )
                 except Exception:
                     logger.warning("Google Places restaurant search failed.", exc_info=True)
 
