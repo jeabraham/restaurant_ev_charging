@@ -259,10 +259,10 @@ async def test_google_places_finds_blowers_and_grafton(google_client, ocm_client
 async def test_end_to_end_lloydminster_finds_blowers_and_grafton(http_client):
     """Full DiningChargerService search for Lloydminster returns Blowers and Grafton.
 
-    This test exercises the automatic Google Places fallback that fires when Geoapify
-    returns zero catering places for a charger.  No extra configuration is required;
-    the fallback is triggered by a Google client being present and Geoapify returning
-    nothing.
+    This test verifies the always-on Google Places integration: when a Google client is
+    configured, the service queries Google for restaurants alongside Geoapify regardless
+    of whether Geoapify returns anything.  For Lloydminster, Geoapify has a catering
+    coverage gap, so Google Places is the sole effective source here.
     """
     ocm = OpenChargeMapClient(http_client, _ocm_key)
     geo = GeoapifyClient(http_client, _geo_key)
@@ -274,7 +274,7 @@ async def test_end_to_end_lloydminster_finds_blowers_and_grafton(http_client):
         review_provider=None,
         google_client=google,
         restaurant_search_geoapify=True,
-        restaurant_search_google=False,   # rely solely on the automatic fallback
+        restaurant_search_google=False,   # irrelevant: Google always runs when client is present
         enable_charger_reviews=False,
         enable_opening_hours=False,
     )
