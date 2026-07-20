@@ -5,9 +5,26 @@ They are skipped when real API keys are absent.
 
 Background
 ----------
-Blue Moose Coffee House should be a strong recommendation near the Hope, BC
-Electrify Canada charger (OpenChargeMap POI 168742): it is nearby and highly
-rated.  These tests diagnose why it can still be missing from search results.
+Blue Moose Coffee House should appear as a dining option near the Hope, BC
+Electrify Canada charger (OpenChargeMap POI 168742): it is rated 4.5/5 and is
+within 1 km of the charger.
+
+Root cause of the original bug
+-------------------------------
+``_select_enrichment_candidates`` used to be the sole gate that determined
+BOTH which restaurants were enriched with review data AND which restaurants
+were eligible for the final ranking and ``max_results`` cut.  The function
+kept only the nearest ``_ENRICH_PER_BUCKET`` (15) places per
+(charger-speed × near/far) bucket.  With a large ``restaurant_radius_m``
+(e.g. 2000 m, as used by the Gemini agent), many restaurants enter the
+pipeline, and Blue Moose — ranked 16th+ by raw distance — was silently
+dropped *before* its 4.5 rating could influence the score.
+
+The fix: enrich the bounded subset in-place and then rank ALL results.  A
+high-rated place that missed the enrichment cut still competes for a slot in
+the final output; it just uses the default rating (3.0) instead of its real
+one.  In practice, for small towns like Hope the enrichment subset covers
+Blue Moose anyway, so it earns its full rating boost.
 
 Run them explicitly:
     pytest tests/test_hope_integration.py -v
@@ -189,7 +206,7 @@ async def test_google_keyword_cafe_search_finds_blue_moose(http_client, ocm_clie
     assert "cafe" in types, f"Expected Google to classify {_BLUE_MOOSE_NAME!r} as a cafe. Types: {types}"
 
 
-async def test_geoapify_nearby_food_search_near_hope_charger_misses_blue_moose(geo_client, ocm_client):
+async def test_geoapify_nearby_food_search_near_hope_charger_finds_blue_moose(geo_client, ocm_client):
     station = await _hope_charger_station(ocm_client)
     charger_lat, charger_lon = _station_coordinates(station)
 
@@ -202,12 +219,13 @@ async def test_geoapify_nearby_food_search_near_hope_charger_misses_blue_moose(g
     names = _blue_moose_names(features)
     print(f"\nGeoapify food places near Hope charger ({len(features)} found): {names}")
 
-    assert not _contains_blue_moose(names), (
-        f"Geoapify unexpectedly returned {_BLUE_MOOSE_NAME!r}. Names: {names}"
+    assert _contains_blue_moose(names), (
+        f"Geoapify did not return {_BLUE_MOOSE_NAME!r} within {_RESTAURANT_RADIUS_M} m of "
+        f"the Hope Electrify Canada charger.  Names: {names}"
     )
 
 
-async def test_google_restaurant_search_near_hope_charger_misses_blue_moose(google_client, ocm_client):
+async def test_google_restaurant_search_near_hope_charger_finds_blue_moose(google_client, ocm_client):
     station = await _hope_charger_station(ocm_client)
     charger_lat, charger_lon = _station_coordinates(station)
 
@@ -220,12 +238,13 @@ async def test_google_restaurant_search_near_hope_charger_misses_blue_moose(goog
     names = _blue_moose_names(places)
     print(f"\nGoogle restaurant search near Hope charger ({len(places)} found): {names}")
 
-    assert not _contains_blue_moose(names), (
-        f"Google restaurant search unexpectedly returned {_BLUE_MOOSE_NAME!r}. Names: {names}"
+    assert _contains_blue_moose(names), (
+        f"Google restaurant search did not return {_BLUE_MOOSE_NAME!r} within "
+        f"{_RESTAURANT_RADIUS_M} m of the Hope Electrify Canada charger.  Names: {names}"
     )
 
 
-async def test_end_to_end_hope_search_still_omits_blue_moose(http_client):
+async def test_end_to_end_hope_search_finds_blue_moose(http_client):
     ocm = OpenChargeMapClient(http_client, _ocm_key)
     geo = GeoapifyClient(http_client, _geo_key)
     google = GooglePlacesClient(http_client, _google_key)
@@ -257,6 +276,51 @@ async def test_end_to_end_hope_search_still_omits_blue_moose(http_client):
     print(f"Hope end-to-end restaurant names: {names}")
 
     assert data["diagnostics"]["qualifying_chargers"] > 0, "No qualifying Hope chargers found."
-    assert not _contains_blue_moose(names), (
-        f"End-to-end search unexpectedly returned {_BLUE_MOOSE_NAME!r}. Names: {names}"
+    assert _contains_blue_moose(names), (
+        f"End-to-end search did not return {_BLUE_MOOSE_NAME!r}. Names: {names}"
+    )
+
+
+async def test_end_to_end_hope_large_radius_finds_blue_moose(http_client):
+    """Regression: Blue Moose must appear in results when restaurant_radius_m=2000.
+
+    This is the parameter set the Gemini agent uses.  Before the enrichment-cap fix,
+    the bounded candidate selection (_select_enrichment_candidates → nearest 15 per
+    bucket) could exclude Blue Moose from the ranking entirely when many restaurants
+    filled the bucket at the larger radius, even though both data providers returned it.
+    """
+    ocm = OpenChargeMapClient(http_client, _ocm_key)
+    geo = GeoapifyClient(http_client, _geo_key)
+    google = GooglePlacesClient(http_client, _google_key)
+
+    service = DiningChargerService(
+        ocm,
+        geo,
+        review_provider=None,
+        google_client=google,
+        restaurant_search_geoapify=True,
+        restaurant_search_google=True,
+        enable_charger_reviews=False,
+        enable_opening_hours=False,
+    )
+
+    payload = FindDiningChargersRequest(
+        latitude=_HOPE_LAT,
+        longitude=_HOPE_LON,
+        radius_km=_CHARGER_SEARCH_RADIUS_KM,
+        restaurant_radius_m=2000,
+        ccs=True,
+        nacs=True,
+    )
+
+    data = await service.find(payload)
+    results = data["results"]
+    names = [item["restaurant"]["name"] for item in results]
+    print(f"\nHope 2000 m diagnostics: {data['diagnostics']}")
+    print(f"Hope 2000 m restaurant names: {names}")
+
+    assert data["diagnostics"]["qualifying_chargers"] > 0, "No qualifying Hope chargers found."
+    assert _contains_blue_moose(names), (
+        f"{_BLUE_MOOSE_NAME!r} missing from results with restaurant_radius_m=2000. "
+        f"This was the Gemini agent failure scenario.  Names: {names}"
     )

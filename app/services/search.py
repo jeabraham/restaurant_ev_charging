@@ -444,14 +444,19 @@ class DiningChargerService:
 
         preferred_radius_m = min(payload.preferred_radius_m, payload.restaurant_radius_m)
 
-        # Select a bounded, diversity-preserving candidate set to enrich with reviews.
-        # Stratifying by (charger speed × near/far) guarantees far-but-good and slow-charger
-        # candidates survive to be tiered, instead of being truncated away by distance first.
-        candidates = self._select_enrichment_candidates(results, preferred_radius_m)
-
-        # Enrich with review data (needed for accurate fast-food detection and scoring).
+        # Enrich a bounded subset of results with review data.
+        # The subset is selected by stratifying on (charger speed × near/far) and keeping
+        # the nearest candidates per bucket, which bounds the number of review-API calls
+        # while ensuring close-but-slow and far-but-good candidates also get reviewed.
+        # Enrichment mutates the underlying dicts in-place, so the updated review data is
+        # visible when we rank the full results list below.  Importantly we rank ALL results
+        # and not just the enrichment subset, so a highly-rated place that happens to fall
+        # outside the nearest-N boundary is never silently excluded from the output.
+        enrichment_subset = self._select_enrichment_candidates(results, preferred_radius_m)
         if self._review_provider is not None:
-            candidates = await self._enrich(candidates)
+            await self._enrich(enrichment_subset)
+
+        candidates = results
 
         # Drop permanently-closed businesses outright — they are never a valid recommendation.
         # (Current "open now" status is deliberately NOT used to exclude, since the user is
