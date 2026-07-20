@@ -77,6 +77,8 @@ Never mention a restaurant unless the same entry includes:
 
 If any required item is missing, omit the restaurant entirely.
 
+For the restaurant's Google Maps link, use the `restaurant.google_maps_url` field verbatim. It is normally anchored to the exact business via `query_place_id` (e.g. `https://www.google.com/maps/search/?api=1&query=Springs%20Garden%20Restaurant&query_place_id=ChIJ7cBbWSTeEFMRBcnHSOSkX1Y`) and falls back to a coordinate-based search link only when no Google place_id is available (Geoapify-only result, or no Google Places API key). Do not construct this link yourself from coordinates when the field is provided.
+
 # FINAL VALIDATION
 
 Before replying, confirm for every restaurant you recommend:

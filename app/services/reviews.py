@@ -21,6 +21,7 @@ class ReviewInfo:
     provider_url: str
     provider: str
     is_fast_food: bool = False
+    place_id: str | None = None  # Google place_id when provider is Google; None otherwise
 
 
 class ReviewProvider(Protocol):
@@ -234,4 +235,5 @@ def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
         provider_url=provider_url or "",
         provider="google",
         is_fast_food=is_fast_food,
+        place_id=place_id if isinstance(place_id, str) else None,
     )

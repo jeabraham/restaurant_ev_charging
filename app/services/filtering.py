@@ -158,6 +158,10 @@ def google_place_to_geoapify_shape(place: dict[str, Any]) -> dict[str, Any]:
     return {
         "properties": {
             "place_id": place.get("place_id"),
+            # Genuine Google place_id, kept under a Google-specific key so the search
+            # pipeline can build a query_place_id Maps link (Geoapify's place_id is not
+            # a Google id and must not be used for that).
+            "google_place_id": place.get("place_id"),
             "name": place.get("name"),
             "formatted": place.get("vicinity"),
             "lat": loc.get("lat"),

@@ -86,7 +86,7 @@ If any item is missing, omit the restaurant entirely.
 Format all URLs as markdown links using exactly these labels:
 
 - `[Walking directions](url)` — Google Maps walking directions from charger to restaurant
-- `[Restaurant](url)` — Google Maps place URL for the restaurant
+- `[Restaurant](url)` — use the `restaurant.google_maps_url` field verbatim. It is normally anchored to the exact business via `query_place_id` (e.g. `.../search/?api=1&query=Springs%20Garden%20Restaurant&query_place_id=ChIJ7cBbWSTeEFMRBcnHSOSkX1Y`); it falls back to a coordinate-based search link only when no Google place_id is available (Geoapify-only result, or no Google Places API key). Do not build this link yourself from coordinates when the field is provided.
 - `[PlugShare](url)` — PlugShare URL for the charger
 - `[Website](url)` — restaurant website (omit this link if no website is available)
 

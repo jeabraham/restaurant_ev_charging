@@ -62,7 +62,7 @@
                               "latitude": { "type": "number" },
                               "longitude": { "type": "number" },
                               "website": { "type": "string", "nullable": true },
-                              "google_maps_url": { "type": "string" },
+                              "google_maps_url": { "type": "string", "description": "Google Maps link for the restaurant. Anchored to the exact business via query_place_id when a Google place_id is known; otherwise a coordinate-based search link (e.g. Geoapify-only results or no Google Places API key). Use this for the restaurant link." },
                               "reviews": {
                                 "type": "object",
                                 "description": "Third-party review data. Present only when a matching business was found. Use rating, review_count, cuisine_types, and is_open_now when ranking and recommending restaurants.",

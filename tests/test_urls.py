@@ -1,5 +1,6 @@
 from app.utils.urls import (
     google_maps_place_url,
+    google_maps_place_url_from_id,
     google_maps_walking_url,
     openchargemap_details_url,
     plugshare_google_search_url,
@@ -27,3 +28,14 @@ def test_google_maps_urls():
     assert "origin=51.4672%2C-109.1571" in walking
     assert "destination=51.4668%2C-109.1549" in walking
     assert place == "https://www.google.com/maps/search/?api=1&query=51.4668%2C-109.1549"
+
+
+def test_google_maps_place_url_from_id():
+    url = google_maps_place_url_from_id(
+        "Springs Garden Restaurant and Lounge", "ChIJ7cBbWSTeEFMRBcnHSOSkX1Y"
+    )
+    assert url == (
+        "https://www.google.com/maps/search/?api=1"
+        "&query=Springs%20Garden%20Restaurant%20and%20Lounge"
+        "&query_place_id=ChIJ7cBbWSTeEFMRBcnHSOSkX1Y"
+    )

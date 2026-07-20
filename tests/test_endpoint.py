@@ -422,3 +422,29 @@ async def test_endpoint_enriches_with_google_reviews(test_client_with_google):
     assert reviews["provider"] == "google"
     assert reviews["provider_url"] == "https://www.google.com/maps/search/?api=1&query=Example%20Restaurant&query_place_id=ChIJN1t_tDeuEmsRUsoyG83frY4"
     assert "Canadian Restaurant" in reviews["cuisine_types"]
+    # The restaurant's Maps link is anchored to the exact business via the Google place_id.
+    assert enriched[0]["restaurant"]["google_maps_url"] == (
+        "https://www.google.com/maps/search/?api=1"
+        "&query=Example%20Restaurant&query_place_id=ChIJN1t_tDeuEmsRUsoyG83frY4"
+    )
+
+
+@respx.mock
+async def test_google_maps_url_falls_back_to_coordinates_without_google(test_client):
+    """With no Google Places / review provider, the restaurant Maps link stays coordinate-based."""
+    respx.get("https://api.openchargemap.io/v3/poi").mock(
+        return_value=Response(200, json=[_ocm_station(station_id=100, power_kw=150, connection_type_id=33, connection_title="CCS")])
+    )
+    respx.get("https://api.geoapify.com/v2/places").mock(return_value=Response(200, json=_geoapify_features()))
+
+    response = await test_client.post(
+        "/find-dining-chargers",
+        json={"latitude": 51.467, "longitude": -109.156},
+    )
+
+    assert response.status_code == 200
+    results = response.json()["results"]
+    example = next(r for r in results if r["restaurant"]["name"] == "Example Restaurant")
+    url = example["restaurant"]["google_maps_url"]
+    assert "query_place_id" not in url
+    assert url.startswith("https://www.google.com/maps/search/?api=1&query=51.")

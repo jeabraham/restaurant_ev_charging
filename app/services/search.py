@@ -25,6 +25,7 @@ from app.services.reviews import ReviewProvider, google_place_open_now, is_googl
 from app.utils.distance import haversine_metres
 from app.utils.urls import (
     google_maps_place_url,
+    google_maps_place_url_from_id,
     google_maps_walking_url,
     openchargemap_details_url,
     plugshare_google_search_url,
@@ -388,6 +389,9 @@ class DiningChargerService:
                         # Category-based fast-food signal, used for tiering when no review
                         # provider is configured (reviews.is_fast_food is authoritative when present).
                         "is_fast_food_category": is_fast_food_category(place),
+                        # Genuine Google place_id if this place came from Google restaurant
+                        # search; used to build a query_place_id Maps link.
+                        "google_place_id": properties.get("google_place_id"),
                         "pairs": [pair],
                     }
                 else:
@@ -417,6 +421,8 @@ class DiningChargerService:
                 "distance": primary["distance"],
                 # Private, popped before returning; feeds tiering when reviews are absent.
                 "_is_fast_food_category": entry.get("is_fast_food_category", False),
+                # Private, popped before returning; genuine Google place_id when known.
+                "_google_place_id": entry.get("google_place_id"),
             }
             if len(pairs) > 1:
                 result["other_close_chargers"] = [
@@ -463,9 +469,15 @@ class DiningChargerService:
         )
         results = candidates[: payload.max_results]
 
-        # Drop the private tiering helper before returning.
+        # Finalise each result: upgrade the restaurant's Maps link to a place_id-anchored
+        # URL when a genuine Google place_id is known, and drop private helper fields.
         for item in results:
             item.pop("_is_fast_food_category", None)
+            place_id = item.pop("_google_place_id", None)
+            if place_id:
+                item["restaurant"]["google_maps_url"] = google_maps_place_url_from_id(
+                    item["restaurant"]["name"], place_id
+                )
 
         tier_counts: dict[str, int] = {}
         for item in results:
@@ -562,6 +574,10 @@ class DiningChargerService:
                     "provider": info.provider,
                     "is_fast_food": info.is_fast_food,
                 }
+                # A place_id matched by the Google review lookup is authoritative — it
+                # identifies the exact business — so prefer it over any search-time id.
+                if info.place_id:
+                    item["_google_place_id"] = info.place_id
             return item
 
         return list(await asyncio.gather(*[enrich_one(item) for item in results]))
