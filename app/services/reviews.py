@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from app.clients.google_places import GooglePlacesClient
 from app.clients.yelp import YelpClient
+from app.utils.urls import google_maps_place_url_from_id
 
 logger = logging.getLogger(__name__)
 
@@ -235,10 +236,7 @@ def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
     place_id = place.get("place_id")
     provider_url = place.get("url")
     if not provider_url and place_id:
-        # Construct a Google Maps search URL using the place_id.
-        # We include the name as well for better compatibility/display.
-        encoded_name = urllib.parse.quote(name)
-        provider_url = f"https://www.google.com/maps/search/?api=1&query={encoded_name}&query_place_id={place_id}"
+        provider_url = google_maps_place_url_from_id(name, place_id)
 
     # Detect fast food or chains.
     is_fast_food = "fast_food_restaurant" in types or is_likely_chain_or_fast_food(

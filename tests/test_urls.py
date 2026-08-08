@@ -34,8 +34,4 @@ def test_google_maps_place_url_from_id():
     url = google_maps_place_url_from_id(
         "Springs Garden Restaurant and Lounge", "ChIJ7cBbWSTeEFMRBcnHSOSkX1Y"
     )
-    assert url == (
-        "https://www.google.com/maps/search/?api=1"
-        "&query=Springs%20Garden%20Restaurant%20and%20Lounge"
-        "&query_place_id=ChIJ7cBbWSTeEFMRBcnHSOSkX1Y"
-    )
+    assert url == "https://www.google.com/maps/place/?q=place_id:ChIJ7cBbWSTeEFMRBcnHSOSkX1Y"

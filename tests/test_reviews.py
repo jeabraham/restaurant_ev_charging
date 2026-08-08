@@ -250,7 +250,7 @@ def test_parse_google_place_constructs_url_if_missing():
         "user_ratings_total": 100,
     }
     info = _parse_google_place(place)
-    assert info.provider_url == "https://www.google.com/maps/search/?api=1&query=Fancy%20Bistro&query_place_id=ChIJ12345"
+    assert info.provider_url == "https://www.google.com/maps/place/?q=place_id:ChIJ12345"
 
 
 class _NoMatchGoogleClient:

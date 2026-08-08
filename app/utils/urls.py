@@ -32,14 +32,10 @@ def google_maps_place_url(latitude: float, longitude: float) -> str:
 def google_maps_place_url_from_id(name: str, place_id: str) -> str:
     """Build a Google Maps place link anchored to a specific Google place_id.
 
-    Preferred over the coordinate-based link when a genuine Google place_id is known:
-    it opens the exact business page (name + place_id) rather than a coordinate search.
+    Uses the /maps/place/ URL scheme with a place_id query to reliably open the
+    exact business page without showing a list of other search results.
     """
-    encoded_name = quote(name)
-    return (
-        "https://www.google.com/maps/search/?api=1"
-        f"&query={encoded_name}&query_place_id={place_id}"
-    )
+    return f"https://www.google.com/maps/place/?q=place_id:{place_id}"
 
 
 def plugshare_google_search_url(name: str, city: str | None, network: str | None) -> str:
