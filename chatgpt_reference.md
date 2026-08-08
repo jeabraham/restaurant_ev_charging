@@ -26,8 +26,8 @@ compatible CCS stations and compatible Tesla Superchargers. Keep `nacs: true` an
 
 ### What "good" means
 Not fast food, and (when reviews exist) `rating >= 3.5`. Prefer `rating >= 4.0`
-with `review_count >= 50`. If `reviews` is absent, tell the user review data is
-unavailable — never invent ratings.
+with `review_count >= 50`. If the user explicitly asks for "highly rated" or similar, prioritize `rating` above all else (within the search radius), even if it means a longer walk.
+If `reviews` is absent, tell the user review data is unavailable — never invent ratings.
 
 ## Field schema
 
@@ -94,6 +94,7 @@ The walking-directions URL must contain `origin=`, `destination=`, and
 
 For every restaurant you recommend, confirm:
 - charger and restaurant came from the Action, not web search
+- charger is NOT one the user has previously flagged as non-existent or unreliable
 - charger name, OpenChargeMap URL, and PlugShare URL are present
 - walking URL contains `origin=`, `destination=`, and `travelmode=walking`
 - exact distance in metres is stated

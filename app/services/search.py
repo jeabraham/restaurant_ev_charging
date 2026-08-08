@@ -35,8 +35,8 @@ from app.utils.urls import (
 logger = logging.getLogger(__name__)
 
 # Combined ranking weights.  Adjust these if the balance feels wrong.
-# A 5-star restaurant is worth an extra ~300 m walk or ~60 kW of charger power.
-_RATING_WEIGHT = 15.0
+# A 5-star restaurant is worth an extra ~500 m walk or ~80 kW of charger power.
+_RATING_WEIGHT = 25.0
 _DEFAULT_RATING = 3.0   # used when no review data is available
 _POWER_WEIGHT = 0.3     # kW → score points
 _DISTANCE_COST = 0.05   # metres → score points lost
