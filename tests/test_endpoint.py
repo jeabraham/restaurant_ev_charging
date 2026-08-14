@@ -72,6 +72,18 @@ def _geoapify_features():
     }
 
 
+def _mock_google_nearby_search(results: list[dict] | None = None):
+    """Mock the Google Nearby Search call the service makes for every charger.
+
+    The service always queries Google for restaurants when a Google client is configured,
+    and swallows failures — so without this mock the Google-enabled tests quietly exercise
+    the error path instead of the real one.
+    """
+    respx.get("https://maps.googleapis.com/maps/api/place/nearbysearch/json").mock(
+        return_value=Response(200, json={"status": "OK", "results": results or []})
+    )
+
+
 def _tiering_features():
     """One near independent restaurant, several near fast-food places, and one far
     independent restaurant (~1500 m). Used to exercise tiering and the far-restaurant
@@ -386,6 +398,7 @@ async def test_endpoint_enriches_with_google_reviews(test_client_with_google):
         return_value=Response(200, json=[_ocm_station(station_id=100, power_kw=150, connection_type_id=33, connection_title="CCS")])
     )
     respx.get("https://api.geoapify.com/v2/places").mock(return_value=Response(200, json=_geoapify_features()))
+    _mock_google_nearby_search()
     respx.get("https://maps.googleapis.com/maps/api/place/findplacefromtext/json").mock(
         return_value=Response(
             200,
@@ -421,12 +434,11 @@ async def test_endpoint_enriches_with_google_reviews(test_client_with_google):
     assert reviews["price_level"] == "$$"
     assert reviews["is_open_now"] is True
     assert reviews["provider"] == "google"
-    assert reviews["provider_url"] == "https://www.google.com/maps/search/?api=1&query=Example%20Restaurant&query_place_id=ChIJN1t_tDeuEmsRUsoyG83frY4"
+    assert reviews["provider_url"] == "https://www.google.com/maps/place/?q=place_id:ChIJN1t_tDeuEmsRUsoyG83frY4"
     assert "Canadian Restaurant" in reviews["cuisine_types"]
     # The restaurant's Maps link is anchored to the exact business via the Google place_id.
     assert enriched[0]["restaurant"]["google_maps_url"] == (
-        "https://www.google.com/maps/search/?api=1"
-        "&query=Example%20Restaurant&query_place_id=ChIJN1t_tDeuEmsRUsoyG83frY4"
+        "https://www.google.com/maps/place/?q=place_id:ChIJN1t_tDeuEmsRUsoyG83frY4"
     )
 
 
@@ -437,6 +449,7 @@ async def test_endpoint_attaches_weekday_hours(test_client_with_google):
         return_value=Response(200, json=[_ocm_station(station_id=100, power_kw=150, connection_type_id=33, connection_title="CCS")])
     )
     respx.get("https://api.geoapify.com/v2/places").mock(return_value=Response(200, json=_geoapify_features()))
+    _mock_google_nearby_search()
     respx.get("https://maps.googleapis.com/maps/api/place/findplacefromtext/json").mock(
         return_value=Response(
             200,
@@ -493,6 +506,7 @@ async def test_permanently_closed_restaurant_excluded(test_client_with_google):
         return_value=Response(200, json=[_ocm_station(station_id=100, power_kw=150, connection_type_id=33, connection_title="CCS")])
     )
     respx.get("https://api.geoapify.com/v2/places").mock(return_value=Response(200, json=_geoapify_features()))
+    _mock_google_nearby_search()
     # Every review lookup reports permanent closure (even though open_now is True).
     respx.get("https://maps.googleapis.com/maps/api/place/findplacefromtext/json").mock(
         return_value=Response(

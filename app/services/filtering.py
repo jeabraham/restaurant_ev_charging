@@ -151,10 +151,17 @@ def google_place_to_geoapify_shape(place: dict[str, Any]) -> dict[str, Any]:
     is_qualifying_place(), dedupe_geoapify_place_key(), and the restaurant processing loop.
     Google `types` are mapped to synthetic `catering.*` categories so the existing
     catering filter works unchanged.
+
+    Nearby Search also returns rating, review count, business status and types (see
+    ``_NEARBY_FOOD_FIELDS``).  These are carried through under ``google_*`` keys so the
+    search pipeline can rank on the real rating without spending a second API call —
+    previously they were dropped here, and a highly-rated restaurant that fell outside
+    the bounded review-enrichment subset was ranked as if it were unrated.
     """
     loc = (place.get("geometry") or {}).get("location") or {}
     types = place.get("types") or []
     categories = [GOOGLE_FOOD_TYPES[t] for t in types if t in GOOGLE_FOOD_TYPES]
+    rating = place.get("rating")
     return {
         "properties": {
             "place_id": place.get("place_id"),
@@ -171,6 +178,12 @@ def google_place_to_geoapify_shape(place: dict[str, Any]) -> dict[str, Any]:
             "city": None,
             "state": None,
             "country": None,
+            # Search-time review data.  ``google_rating`` stays None when Google has no
+            # rating for the place, so an unrated business is never mistaken for a 0.0.
+            "google_rating": float(rating) if isinstance(rating, (int, float)) else None,
+            "google_user_ratings_total": int(place.get("user_ratings_total") or 0),
+            "google_business_status": place.get("business_status"),
+            "google_types": list(types),
         }
     }
 

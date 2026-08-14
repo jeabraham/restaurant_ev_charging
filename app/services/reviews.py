@@ -206,6 +206,67 @@ def google_place_open_now(place: dict[str, Any]) -> bool | None:
     return None
 
 
+def google_cuisine_types(types: list[Any]) -> list[str]:
+    """Turn Google place `types` into human-readable cuisine labels.
+
+    Drops the generic types that describe nothing about the food (`restaurant`,
+    `establishment`, …) and title-cases the rest, e.g. `sushi_restaurant` -> `Sushi
+    Restaurant`.
+    """
+    return [
+        t.replace("_", " ").title()
+        for t in types
+        if isinstance(t, str) and t not in _GOOGLE_GENERIC_TYPES
+    ]
+
+
+def nearby_search_review_seed(
+    name: str,
+    rating: float | None,
+    review_count: int,
+    types: list[Any],
+    business_status: str | None,
+    place_id: str | None,
+) -> dict[str, Any] | None:
+    """Build a ``restaurant.reviews`` dict from Google Nearby Search data.
+
+    Nearby Search returns a rating and review count for every place it finds, so this
+    gives the ranker a real rating for *all* Google-sourced restaurants at no extra API
+    cost.  The Find Place enrichment pass is bounded, and a highly-rated restaurant that
+    falls outside it used to be ranked as if it were unrated.
+
+    Returns None when Google has no rating for the place.  That is deliberate: a place
+    with no ratings must keep ``reviews`` absent so it scores with the neutral default
+    rating, rather than carrying a 0.0 that would sink it in ranking and fail the agent's
+    "rating >= 3.5" check.
+
+    The result carries only what Nearby Search actually knows — no ``price_level`` or
+    ``weekday_text``.  ``_enrich`` later upgrades it with the fuller Find Place data.
+    """
+    if rating is None or review_count <= 0:
+        return None
+
+    cuisine_types = google_cuisine_types(types)
+    seed: dict[str, Any] = {
+        "rating": float(rating),
+        "review_count": int(review_count),
+        "price_level": None,
+        "cuisine_types": cuisine_types,
+        "is_open_now": None,
+        "business_status": business_status,
+        "weekday_text": None,
+        "provider_url": (
+            google_maps_place_url_from_id(name, place_id) if place_id else ""
+        ),
+        # Distinct from "google" so callers can tell this came from the search response
+        # rather than a per-restaurant lookup, and therefore lacks price and hours.
+        "provider": "google_nearby",
+        "is_fast_food": "fast_food_restaurant" in types
+        or is_likely_chain_or_fast_food(name, cuisine_types),
+    }
+    return seed
+
+
 def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
     price_raw = place.get("price_level")
     price_level = _GOOGLE_PRICE_LEVEL.get(price_raw) if isinstance(price_raw, int) else None
@@ -226,11 +287,7 @@ def _parse_google_place(place: dict[str, Any]) -> ReviewInfo:
     )
 
     types = place.get("types") or []
-    cuisine_types = [
-        t.replace("_", " ").title()
-        for t in types
-        if isinstance(t, str) and t not in _GOOGLE_GENERIC_TYPES
-    ]
+    cuisine_types = google_cuisine_types(types)
 
     name = place.get("name", "")
     place_id = place.get("place_id")

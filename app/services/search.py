@@ -21,7 +21,12 @@ from app.services.filtering import (
     station_is_explicitly_non_operational,
     station_status_value,
 )
-from app.services.reviews import ReviewProvider, google_place_open_now, is_google_place_closed
+from app.services.reviews import (
+    ReviewProvider,
+    google_place_open_now,
+    is_google_place_closed,
+    nearby_search_review_seed,
+)
 from app.utils.distance import haversine_metres
 from app.utils.urls import (
     google_maps_place_url,
@@ -58,6 +63,13 @@ _TIER_RANK = {
 # bucket.  Bounds review-API calls while guaranteeing far-but-good and slow-charger
 # candidates survive to be tiered (rather than being truncated away by distance first).
 _ENRICH_PER_BUCKET = 15
+
+# A standout restaurant must never be lost to the max_results cut.  Up to this many of
+# the highest-rated qualifying results are added back when ranking would have dropped
+# them, so the response is bounded at max_results + _PROTECTED_TOP_RATED.
+_PROTECTED_TOP_RATED = 3
+_TOP_RATED_MIN_RATING = 4.5
+_TOP_RATED_MIN_REVIEWS = 20
 
 
 class DiningChargerService:
@@ -381,18 +393,32 @@ class DiningChargerService:
 
                 if dedupe_key not in restaurant_chargers:
                     website = properties.get("website")
+                    restaurant: dict[str, Any] = {
+                        "name": properties["name"].strip(),
+                        "address": properties.get("formatted"),
+                        "latitude": restaurant_lat,
+                        "longitude": restaurant_lon,
+                        "website": website if is_valid_website(website) else None,
+                        "google_maps_url": google_maps_place_url(
+                            restaurant_lat,
+                            restaurant_lon,
+                        ),
+                    }
+                    # Seed reviews from the Google search response when it carried a
+                    # rating, so ranking sees the real rating even for restaurants that
+                    # fall outside the bounded enrichment subset below.
+                    seed = nearby_search_review_seed(
+                        name=restaurant["name"],
+                        rating=properties.get("google_rating"),
+                        review_count=properties.get("google_user_ratings_total") or 0,
+                        types=properties.get("google_types") or [],
+                        business_status=properties.get("google_business_status"),
+                        place_id=properties.get("google_place_id"),
+                    )
+                    if seed is not None:
+                        restaurant["reviews"] = seed
                     restaurant_chargers[dedupe_key] = {
-                        "restaurant": {
-                            "name": properties["name"].strip(),
-                            "address": properties.get("formatted"),
-                            "latitude": restaurant_lat,
-                            "longitude": restaurant_lon,
-                            "website": website if is_valid_website(website) else None,
-                            "google_maps_url": google_maps_place_url(
-                                restaurant_lat,
-                                restaurant_lon,
-                            ),
-                        },
+                        "restaurant": restaurant,
                         # Category-based fast-food signal, used for tiering when no review
                         # provider is configured (reviews.is_fast_food is authoritative when present).
                         "is_fast_food_category": is_fast_food_category(place),
@@ -484,7 +510,9 @@ class DiningChargerService:
                 item["restaurant"]["name"].lower(),
             )
         )
-        results = candidates[: payload.max_results]
+        results, protected_top_rated = _truncate_keeping_top_rated(
+            candidates, payload.max_results
+        )
 
         # Fetch full weekly opening hours for the final Google-sourced results so the agent
         # can discuss which meals/days a place is closed. Bounded by max_results, and only
@@ -526,6 +554,7 @@ class DiningChargerService:
                 "geoapify_places_received": geoapify_places_received,
                 "qualifying_restaurant_charger_pairs": len(results),
                 "tier_counts": tier_counts,
+                "protected_top_rated": protected_top_rated,
                 "warnings": warnings,
             },
         }
@@ -562,10 +591,17 @@ class DiningChargerService:
         """Pick a bounded set of results to enrich, preserving tier diversity.
 
         Stratifies by the dimensions known before review lookup — charger speed
-        (fast vs. not) and near/far — and keeps the nearest ``_ENRICH_PER_BUCKET``
+        (fast vs. not) and near/far — and keeps the best-scoring ``_ENRICH_PER_BUCKET``
         from each bucket.  This bounds review-API calls while ensuring far-but-good
         and slow-charger candidates are not truncated away by distance before they
         can be tiered and ranked.
+
+        Buckets are ordered by ``_combined_score`` rather than raw distance.  Distance is
+        already a term in that score, but so is the search-time rating, so the fixed
+        review budget lands on the candidates most likely to be recommended.  Ordering by
+        distance alone meant that in a town with many chargers every slot went to
+        whatever happened to sit closest to one, and a genuinely excellent restaurant a
+        block further away never got looked up.
         """
         buckets: dict[tuple[str, str], list[dict]] = {}
         for item in results:
@@ -576,33 +612,53 @@ class DiningChargerService:
 
         selected: list[dict] = []
         for bucket in buckets.values():
-            bucket.sort(key=lambda item: item["distance"]["straight_line_metres"])
+            bucket.sort(key=lambda item: -_combined_score(item))
             selected.extend(bucket[:_ENRICH_PER_BUCKET])
         return selected
 
     async def _enrich(self, results: list[dict]) -> list[dict]:
-        """Fetch review data for each restaurant in parallel (no re-sorting)."""
+        """Fetch review data for each restaurant in parallel (no re-sorting).
+
+        Merges onto any search-time seed (see ``nearby_search_review_seed``) rather than
+        replacing it, so the lookup can only add information: a provider that matches a
+        business with no ratings must not erase a rating the search already gave us.
+        """
 
         async def enrich_one(item: dict) -> dict:
             r = item["restaurant"]
             info = await self._review_provider.lookup(r["name"], r["latitude"], r["longitude"])  # type: ignore[union-attr]
-            if info is not None:
-                item["restaurant"]["reviews"] = {
-                    "rating": info.rating,
-                    "review_count": info.review_count,
-                    "price_level": info.price_level,
-                    "cuisine_types": info.cuisine_types,
-                    "is_open_now": info.is_open_now,
-                    "business_status": info.business_status,
-                    "weekday_text": info.weekday_text,
-                    "provider_url": info.provider_url,
-                    "provider": info.provider,
-                    "is_fast_food": info.is_fast_food,
-                }
-                # A place_id matched by the Google review lookup is authoritative — it
-                # identifies the exact business — so prefer it over any search-time id.
-                if info.place_id:
-                    item["_google_place_id"] = info.place_id
+            if info is None:
+                return item
+
+            seeded: dict[str, Any] = r.get("reviews") or {}
+            # A match with no ratings cannot improve on a seeded rating, so keep the seed's
+            # in that case (and its provider tag, which is what the rating came from).
+            seed_is_rated = bool(seeded.get("rating")) and (seeded.get("review_count") or 0) > 0
+            keep_seeded_rating = seed_is_rated and (
+                not info.rating or info.review_count <= 0
+            )
+
+            r["reviews"] = {
+                "rating": seeded["rating"] if keep_seeded_rating else info.rating,
+                "review_count": (
+                    seeded["review_count"] if keep_seeded_rating else info.review_count
+                ),
+                "price_level": info.price_level or seeded.get("price_level"),
+                "cuisine_types": info.cuisine_types or seeded.get("cuisine_types") or [],
+                # Transient by nature, so only ever the freshly looked-up value.
+                "is_open_now": info.is_open_now,
+                "business_status": info.business_status or seeded.get("business_status"),
+                "weekday_text": info.weekday_text or seeded.get("weekday_text"),
+                "provider_url": info.provider_url or seeded.get("provider_url") or "",
+                "provider": seeded.get("provider") if keep_seeded_rating else info.provider,
+                # Either source spotting a chain is enough to treat it as one.
+                "is_fast_food": info.is_fast_food or bool(seeded.get("is_fast_food")),
+            }
+
+            # A place_id matched by the Google review lookup is authoritative — it
+            # identifies the exact business — so prefer it over any search-time id.
+            if info.place_id:
+                item["_google_place_id"] = info.place_id
             return item
 
         return list(await asyncio.gather(*[enrich_one(item) for item in results]))
@@ -653,6 +709,54 @@ def _item_is_fast_food(item: dict) -> bool:
     reviews = item["restaurant"].get("reviews")
     review_ff = bool(reviews.get("is_fast_food")) if reviews else False
     return review_ff or bool(item.get("_is_fast_food_category"))
+
+
+def _is_top_rated(item: dict) -> bool:
+    """Whether a result is good enough that dropping it would be a mistake."""
+    reviews = item["restaurant"].get("reviews")
+    if not reviews:
+        return False
+    rating = reviews.get("rating") or 0.0
+    review_count = reviews.get("review_count") or 0
+    return (
+        rating >= _TOP_RATED_MIN_RATING
+        and review_count >= _TOP_RATED_MIN_REVIEWS
+        and not _item_is_fast_food(item)
+    )
+
+
+def _truncate_keeping_top_rated(
+    candidates: list[dict], max_results: int
+) -> tuple[list[dict], int]:
+    """Apply the ``max_results`` cut without losing the standout restaurants.
+
+    ``max_results`` is a response-size guard, but the ranking blends distance, charger
+    power and rating, and distance can outweigh a stellar rating — so an exceptional
+    restaurant a little further from its charger can rank below the cut and disappear
+    from the response entirely.  Up to ``_PROTECTED_TOP_RATED`` of the highest-rated
+    qualifying results are added back in their ranked positions.
+
+    Returns the results and how many were rescued (reported in ``diagnostics`` so the
+    behaviour is visible rather than implicit).
+    """
+    kept = candidates[:max_results]
+    dropped = candidates[max_results:]
+    if not dropped:
+        return kept, 0
+
+    top_rated = [(index, item) for index, item in enumerate(dropped) if _is_top_rated(item)]
+    best = sorted(
+        top_rated,
+        key=lambda pair: (
+            -(pair[1]["restaurant"]["reviews"].get("rating") or 0.0),
+            -(pair[1]["restaurant"]["reviews"].get("review_count") or 0),
+        ),
+    )[:_PROTECTED_TOP_RATED]
+
+    # Emit the rescued results in ranked order rather than rating order, so the response
+    # keeps a single consistent ordering.
+    rescued = [item for _, item in sorted(best, key=lambda pair: pair[0])]
+    return kept + rescued, len(rescued)
 
 
 def _recommendation_tier(item: dict, preferred_radius_m: int) -> str:
