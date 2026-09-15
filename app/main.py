@@ -167,8 +167,11 @@ def _require_geoapify_key() -> None:
 
 
 def _to_float(value: Any) -> float | None:
-    if isinstance(value, (int, float)):
-        return float(value)
+    if isinstance(value, (int, float, str)):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
     return None
 
 
