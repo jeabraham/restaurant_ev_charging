@@ -107,7 +107,7 @@ Sample response:
 Body fields:
 - `waypoints` (required): at least two `{ "lat", "lon" }` points
 - `mode` (optional, default `drive`)
-- `details` (optional, default `true`)
+- `details` (optional, default `true`; when `false`, `legs`/`steps` may be empty)
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/geo/route" \

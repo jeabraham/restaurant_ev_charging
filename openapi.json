@@ -992,7 +992,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/GeoRouteLeg"
-            }
+            },
+            "description": "Route legs from Geoapify when details are available. Can be an empty array when details=false or upstream omits leg details."
           }
         }
       }
