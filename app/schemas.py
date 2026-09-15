@@ -27,3 +27,36 @@ class FindDiningChargersRequest(BaseModel):
                 "At least one of 'nacs', 'ccs', or 'l2' must be true.",
             )
         return self
+
+
+class RouteWaypoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+
+
+class GeoRouteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    waypoints: list[RouteWaypoint] = Field(..., min_length=2)
+    mode: str = Field(default="drive", min_length=1, max_length=64)
+    details: bool = True
+
+    @model_validator(mode="after")
+    def validate_mode(self) -> "GeoRouteRequest":
+        allowed_modes = {
+            "drive",
+            "truck",
+            "walk",
+            "bicycle",
+            "scooter",
+            "transit",
+            "approximated_transit",
+        }
+        if self.mode not in allowed_modes:
+            raise PydanticCustomError(
+                "semantic_error",
+                f"Unsupported mode '{self.mode}'.",
+            )
+        return self
