@@ -22,7 +22,7 @@ A FastAPI service and interactive AI agent that finds restaurants within walking
 ## Setup
 
 ```bash
-cp .env.example setup.env
+cp setup_example.env setup.env
 # Edit setup.env and fill in your API keys
 ```
 
