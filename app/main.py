@@ -172,6 +172,7 @@ def _to_float(value: Any) -> float | None:
             return float(value)
         except (TypeError, ValueError):
             return None
+    return None
 
 
 def _to_int(value: Any) -> int | None:
