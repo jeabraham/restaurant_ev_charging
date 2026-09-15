@@ -36,14 +36,28 @@
                     "search": {
                       "type": "object",
                       "properties": {
-                        "latitude": { "type": "number" },
-                        "longitude": { "type": "number" },
-                        "radius_km": { "type": "number" },
-                        "restaurant_radius_m": { "type": "integer" },
-                        "preferred_radius_m": { "type": "integer", "description": "Effective near/far boundary used for tiering (clamped to restaurant_radius_m)." }
+                        "latitude": {
+                          "type": "number"
+                        },
+                        "longitude": {
+                          "type": "number"
+                        },
+                        "radius_km": {
+                          "type": "number"
+                        },
+                        "restaurant_radius_m": {
+                          "type": "integer"
+                        },
+                        "preferred_radius_m": {
+                          "type": "integer",
+                          "description": "Effective near/far boundary used for tiering (clamped to restaurant_radius_m)."
+                        }
                       }
                     },
-                    "search_location": { "type": "string", "nullable": true },
+                    "search_location": {
+                      "type": "string",
+                      "nullable": true
+                    },
                     "results": {
                       "type": "array",
                       "items": {
@@ -51,33 +65,99 @@
                         "properties": {
                           "tier": {
                             "type": "string",
-                            "enum": ["primary", "distant_good", "slow_charger", "fast_food", "other"],
-                            "description": "Recommendation tier. 'primary' = good independent restaurant within preferred_radius_m of a DC fast charger — recommend these first. When none exist, offer the fallbacks: 'distant_good' (good restaurant, longer walk to a fast charger), 'slow_charger' (good restaurant at a slow L2 charger), 'fast_food' (highly-rated fast food/chain near a fast charger). 'other' = more heavily compromised."
+                            "enum": [
+                              "primary",
+                              "distant_good",
+                              "slow_charger",
+                              "fast_food",
+                              "other"
+                            ],
+                            "description": "Recommendation tier. 'primary' = good independent restaurant within preferred_radius_m of a DC fast charger \u2014 recommend these first. When none exist, offer the fallbacks: 'distant_good' (good restaurant, longer walk to a fast charger), 'slow_charger' (good restaurant at a slow L2 charger), 'fast_food' (highly-rated fast food/chain near a fast charger). 'other' = more heavily compromised."
                           },
                           "restaurant": {
                             "type": "object",
                             "properties": {
-                              "name": { "type": "string" },
-                              "address": { "type": "string", "nullable": true },
-                              "latitude": { "type": "number" },
-                              "longitude": { "type": "number" },
-                              "website": { "type": "string", "nullable": true },
-                              "google_maps_url": { "type": "string", "description": "Google Maps link for the restaurant. Anchored to the exact business via query_place_id when a Google place_id is known; otherwise a coordinate-based search link (e.g. Geoapify-only results or no Google Places API key). Use this for the restaurant link." },
+                              "name": {
+                                "type": "string"
+                              },
+                              "address": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "latitude": {
+                                "type": "number"
+                              },
+                              "longitude": {
+                                "type": "number"
+                              },
+                              "website": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "google_maps_url": {
+                                "type": "string",
+                                "description": "Google Maps link for the restaurant. Anchored to the exact business via query_place_id when a Google place_id is known; otherwise a coordinate-based search link (e.g. Geoapify-only results or no Google Places API key). Use this for the restaurant link."
+                              },
                               "reviews": {
                                 "type": "object",
                                 "description": "Third-party review data. Present only when a matching business was found. Use rating, review_count, cuisine_types, and is_open_now when ranking and recommending restaurants.",
                                 "nullable": true,
                                 "properties": {
-                                  "rating": { "type": "number", "description": "Average rating (e.g. 1–5 for Yelp)." },
-                                  "review_count": { "type": "integer", "description": "Number of reviews." },
-                                  "price_level": { "type": "string", "nullable": true, "description": "Price level indicator, e.g. '$', '$$', '$$$', '$$$$'." },
-                                  "cuisine_types": { "type": "array", "items": { "type": "string" }, "description": "Cuisine or category labels from the review provider." },
-                                  "is_open_now": { "type": "boolean", "nullable": true, "description": "TRANSIENT current open-now status. Null if unknown. Ignore this unless the user is arriving right now — users usually plan a future stop, so this should not drive recommendations." },
-                                  "business_status": { "type": "string", "nullable": true, "enum": ["OPERATIONAL", "CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"], "description": "Durable operating status. CLOSED_PERMANENTLY businesses are excluded from results; CLOSED_TEMPORARILY should be flagged to the user. Null if unknown." },
-                                  "weekday_text": { "type": "array", "nullable": true, "items": { "type": "string" }, "description": "Human-readable weekly opening hours, e.g. ['Monday: 9:00 AM – 5:00 PM', ...]. Use to tell the user which meals (breakfast/lunch/dinner) or days a place is closed. Null when hours are unavailable (Geoapify-only result, no Google Places key, or hours lookup disabled)." },
-                                  "is_fast_food": { "type": "boolean", "description": "Whether the restaurant is classified as fast food by the review provider." },
-                                  "provider_url": { "type": "string", "description": "Direct link to the restaurant's page on the review provider." },
-                                  "provider": { "type": "string", "description": "Review data source, e.g. 'yelp'." }
+                                  "rating": {
+                                    "type": "number",
+                                    "description": "Average rating (e.g. 1\u20135 for Yelp)."
+                                  },
+                                  "review_count": {
+                                    "type": "integer",
+                                    "description": "Number of reviews."
+                                  },
+                                  "price_level": {
+                                    "type": "string",
+                                    "nullable": true,
+                                    "description": "Price level indicator, e.g. '$', '$$', '$$$', '$$$$'."
+                                  },
+                                  "cuisine_types": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "description": "Cuisine or category labels from the review provider."
+                                  },
+                                  "is_open_now": {
+                                    "type": "boolean",
+                                    "nullable": true,
+                                    "description": "TRANSIENT current open-now status. Null if unknown. Ignore this unless the user is arriving right now \u2014 users usually plan a future stop, so this should not drive recommendations."
+                                  },
+                                  "business_status": {
+                                    "type": "string",
+                                    "nullable": true,
+                                    "enum": [
+                                      "OPERATIONAL",
+                                      "CLOSED_TEMPORARILY",
+                                      "CLOSED_PERMANENTLY"
+                                    ],
+                                    "description": "Durable operating status. CLOSED_PERMANENTLY businesses are excluded from results; CLOSED_TEMPORARILY should be flagged to the user. Null if unknown."
+                                  },
+                                  "weekday_text": {
+                                    "type": "array",
+                                    "nullable": true,
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "description": "Human-readable weekly opening hours, e.g. ['Monday: 9:00 AM \u2013 5:00 PM', ...]. Use to tell the user which meals (breakfast/lunch/dinner) or days a place is closed. Null when hours are unavailable (Geoapify-only result, no Google Places key, or hours lookup disabled)."
+                                  },
+                                  "is_fast_food": {
+                                    "type": "boolean",
+                                    "description": "Whether the restaurant is classified as fast food by the review provider."
+                                  },
+                                  "provider_url": {
+                                    "type": "string",
+                                    "description": "Direct link to the restaurant's page on the review provider."
+                                  },
+                                  "provider": {
+                                    "type": "string",
+                                    "description": "Review data source, e.g. 'yelp'."
+                                  }
                                 }
                               }
                             }
@@ -85,22 +165,53 @@
                           "charger": {
                             "type": "object",
                             "properties": {
-                              "name": { "type": "string" },
-                              "network": { "type": "string", "nullable": true },
-                              "maximum_power_kw": { "type": "number" },
-                              "charger_speed": { "type": "string", "enum": ["DC_FAST", "L2", "UNKNOWN"], "description": "Charger speed class. 'DC_FAST' (>=50 kW) suits a dining stop; 'L2' is slow (overnight only); 'UNKNOWN' for Google Places fallback chargers with no power data." },
-                              "is_fast_charger": { "type": "boolean", "description": "True when charger_speed is DC_FAST." },
-                              "status": { "type": "string" },
-                              "compatibility_notes": { "type": "string", "nullable": true },
-                              "openchargemap_url": { "type": "string" }
+                              "name": {
+                                "type": "string"
+                              },
+                              "network": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "maximum_power_kw": {
+                                "type": "number"
+                              },
+                              "charger_speed": {
+                                "type": "string",
+                                "enum": [
+                                  "DC_FAST",
+                                  "L2",
+                                  "UNKNOWN"
+                                ],
+                                "description": "Charger speed class. 'DC_FAST' (>=50 kW) suits a dining stop; 'L2' is slow (overnight only); 'UNKNOWN' for Google Places fallback chargers with no power data."
+                              },
+                              "is_fast_charger": {
+                                "type": "boolean",
+                                "description": "True when charger_speed is DC_FAST."
+                              },
+                              "status": {
+                                "type": "string"
+                              },
+                              "compatibility_notes": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "openchargemap_url": {
+                                "type": "string"
+                              }
                             }
                           },
                           "distance": {
                             "type": "object",
                             "properties": {
-                              "straight_line_metres": { "type": "number" },
-                              "estimated_walking_time_minutes": { "type": "integer" },
-                              "google_maps_walking_url": { "type": "string" }
+                              "straight_line_metres": {
+                                "type": "number"
+                              },
+                              "estimated_walking_time_minutes": {
+                                "type": "integer"
+                              },
+                              "google_maps_walking_url": {
+                                "type": "string"
+                              }
                             }
                           },
                           "other_close_chargers": {
@@ -109,10 +220,18 @@
                             "items": {
                               "type": "object",
                               "properties": {
-                                "name": { "type": "string" },
-                                "openchargemap_url": { "type": "string" },
-                                "straight_line_metres": { "type": "number" },
-                                "estimated_walking_time_minutes": { "type": "integer" }
+                                "name": {
+                                  "type": "string"
+                                },
+                                "openchargemap_url": {
+                                  "type": "string"
+                                },
+                                "straight_line_metres": {
+                                  "type": "number"
+                                },
+                                "estimated_walking_time_minutes": {
+                                  "type": "integer"
+                                }
                               }
                             }
                           }
@@ -122,14 +241,25 @@
                     "diagnostics": {
                       "type": "object",
                       "properties": {
-                        "qualifying_chargers": { "type": "integer" },
-                        "qualifying_restaurant_charger_pairs": { "type": "integer" },
+                        "qualifying_chargers": {
+                          "type": "integer"
+                        },
+                        "qualifying_restaurant_charger_pairs": {
+                          "type": "integer"
+                        },
                         "tier_counts": {
                           "type": "object",
                           "description": "Number of returned results in each recommendation tier (keys: primary, distant_good, slow_charger, fast_food, other).",
-                          "additionalProperties": { "type": "integer" }
+                          "additionalProperties": {
+                            "type": "integer"
+                          }
                         },
-                        "warnings": { "type": "array", "items": { "type": "string" } }
+                        "warnings": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
                       }
                     }
                   }
@@ -143,6 +273,188 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/geo/geocode": {
+      "get": {
+        "summary": "Geo Geocode",
+        "operationId": "geo_geocode_api_geo_geocode_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Free-form place query text."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 5,
+              "minimum": 1,
+              "maximum": 10
+            },
+            "description": "Max results (default 5, capped at 10)."
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 2,
+                  "maxLength": 10
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Optional language code."
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Optional Geoapify filter expression."
+          },
+          {
+            "name": "bias",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Optional Geoapify bias expression."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Client validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Missing Geoapify API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream Geoapify error or timeout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/geo/route": {
+      "post": {
+        "summary": "Geo Route",
+        "operationId": "geo_route_api_geo_route_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeoRouteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Client validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Missing Geoapify API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream Geoapify error or timeout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoErrorResponse"
                 }
               }
             }
@@ -286,6 +598,79 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "RouteWaypoint": {
+        "type": "object",
+        "required": [
+          "lat",
+          "lon"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lon": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          }
+        }
+      },
+      "GeoRouteRequest": {
+        "type": "object",
+        "required": [
+          "waypoints"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "waypoints": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "$ref": "#/components/schemas/RouteWaypoint"
+            }
+          },
+          "mode": {
+            "type": "string",
+            "default": "drive",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "details": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "GeoErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {},
+              "upstream_status": {
+                "type": "integer"
+              }
+            }
+          }
+        }
       }
     }
   }
