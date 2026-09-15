@@ -181,10 +181,11 @@ def _to_int(value: Any) -> int | None:
     if isinstance(value, int):
         return value
     if isinstance(value, float):
-        return int(value)
+        return int(value) if value.is_integer() else None
     if isinstance(value, str):
         try:
-            return int(float(value))
+            parsed = float(value)
+            return int(parsed) if parsed.is_integer() else None
         except (TypeError, ValueError):
             return None
     return None

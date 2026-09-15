@@ -222,6 +222,46 @@ async def test_route_normalizes_numeric_string_fields(test_client):
     assert body["legs"][0]["steps"][0]["to_index"] == 4
 
 
+@respx.mock
+async def test_route_fractional_step_indexes_become_none(test_client):
+    respx.get("https://api.geoapify.com/v1/routing").mock(
+        return_value=Response(
+            200,
+            json={
+                "features": [
+                    {
+                        "geometry": {"type": "LineString", "coordinates": [[-114.071883, 51.044733], [-114.07, 51.05]]},
+                        "properties": {
+                            "distance": 100.0,
+                            "time": 50.0,
+                            "legs": [
+                                {
+                                    "distance": 100.0,
+                                    "time": 50.0,
+                                    "steps": [
+                                        {"instruction": "Walk", "distance": 10.0, "time": 5.0, "from_index": "2.5", "to_index": 4.7}
+                                    ],
+                                }
+                            ],
+                        },
+                    }
+                ]
+            },
+        )
+    )
+    response = await test_client.post(
+        "/api/geo/route",
+        json={
+            "waypoints": [{"lat": 51.044733, "lon": -114.071883}, {"lat": 51.05, "lon": -114.07}],
+            "mode": "walk",
+        },
+    )
+    assert response.status_code == 200
+    step = response.json()["legs"][0]["steps"][0]
+    assert step["from_index"] is None
+    assert step["to_index"] is None
+
+
 async def test_route_validation_invalid_payload(test_client):
     response = await test_client.post(
         "/api/geo/route",
