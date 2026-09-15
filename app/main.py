@@ -172,6 +172,20 @@ def _to_float(value: Any) -> float | None:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+
+def _to_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
     return None
 
 
@@ -226,23 +240,23 @@ def _normalize_route_response(raw: dict[str, Any], mode: str) -> dict[str, Any]:
                     steps.append(
                         {
                             "instruction": step.get("instruction"),
-                            "distance_m": step.get("distance"),
-                            "duration_s": step.get("time"),
-                            "from_index": step.get("from_index"),
-                            "to_index": step.get("to_index"),
+                            "distance_m": _to_float(step.get("distance")),
+                            "duration_s": _to_float(step.get("time")),
+                            "from_index": _to_int(step.get("from_index")),
+                            "to_index": _to_int(step.get("to_index")),
                         }
                     )
             legs.append(
                 {
-                    "distance_m": leg.get("distance"),
-                    "duration_s": leg.get("time"),
+                    "distance_m": _to_float(leg.get("distance")),
+                    "duration_s": _to_float(leg.get("time")),
                     "steps": steps,
                 }
             )
     return {
         "mode": mode,
-        "total_distance_m": properties.get("distance"),
-        "total_duration_s": properties.get("time"),
+        "total_distance_m": _to_float(properties.get("distance")),
+        "total_duration_s": _to_float(properties.get("time")),
         "geometry": first.get("geometry"),
         "polyline": properties.get("polyline"),
         "legs": legs,

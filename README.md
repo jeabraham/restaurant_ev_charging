@@ -157,13 +157,14 @@ All geo endpoint errors use:
   "error": {
     "code": "ERROR_CODE",
     "message": "Human-readable message",
-    "details": [],
+    "details": { "field": "context" },
     "upstream_status": 503
   }
 }
 ```
 
-`details` and `upstream_status` are optional and appear when applicable.
+`details` is optional arbitrary JSON data, and `upstream_status` is optional.
+Either key may be omitted when not applicable.
 Validation failures return `400`.
 Upstream Geoapify HTTP failures/timeouts return `502`.
 Missing `GEOAPIFY_API_KEY` returns `500` with code `GEOAPIFY_NOT_CONFIGURED`.

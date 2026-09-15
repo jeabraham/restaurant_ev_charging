@@ -170,6 +170,58 @@ async def test_route_non_default_mode_propagates(test_client):
     assert route.calls[0].request.url.params["mode"] == "walk"
 
 
+@respx.mock
+async def test_route_normalizes_numeric_string_fields(test_client):
+    respx.get("https://api.geoapify.com/v1/routing").mock(
+        return_value=Response(
+            200,
+            json={
+                "features": [
+                    {
+                        "geometry": {"type": "LineString", "coordinates": [[-114.071883, 51.044733], [-114.07, 51.05]]},
+                        "properties": {
+                            "distance": "900.5",
+                            "time": "650.2",
+                            "legs": [
+                                {
+                                    "distance": "120.1",
+                                    "time": "85.8",
+                                    "steps": [
+                                        {
+                                            "instruction": "Walk straight",
+                                            "distance": "50.6",
+                                            "time": "33.4",
+                                            "from_index": "2",
+                                            "to_index": "4",
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                    }
+                ]
+            },
+        )
+    )
+    response = await test_client.post(
+        "/api/geo/route",
+        json={
+            "waypoints": [{"lat": 51.044733, "lon": -114.071883}, {"lat": 51.05, "lon": -114.07}],
+            "mode": "walk",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_distance_m"] == 900.5
+    assert body["total_duration_s"] == 650.2
+    assert body["legs"][0]["distance_m"] == 120.1
+    assert body["legs"][0]["duration_s"] == 85.8
+    assert body["legs"][0]["steps"][0]["distance_m"] == 50.6
+    assert body["legs"][0]["steps"][0]["duration_s"] == 33.4
+    assert body["legs"][0]["steps"][0]["from_index"] == 2
+    assert body["legs"][0]["steps"][0]["to_index"] == 4
+
+
 async def test_route_validation_invalid_payload(test_client):
     response = await test_client.post(
         "/api/geo/route",

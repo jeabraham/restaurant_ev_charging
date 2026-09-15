@@ -1,7 +1,8 @@
 """Live integration tests for Geoapify pass-through endpoints.
 
 These tests call the real Geoapify APIs through this service and are skipped
-unless a real GEOAPIFY_API_KEY is configured in setup.env or environment.
+unless a real GEOAPIFY_API_KEY is configured in setup.env (typically copied
+from setup_example.env) or environment.
 """
 from __future__ import annotations
 
@@ -41,7 +42,7 @@ _real_geo = bool(_geo_key) and _geo_key not in {_PLACEHOLDER_GEO, *_CONFTEST_SEN
 
 pytestmark = pytest.mark.skipif(
     not _real_geo,
-    reason="GEOAPIFY_API_KEY not configured in setup.env",
+    reason="GEOAPIFY_API_KEY not configured in setup.env (copy from setup_example.env first)",
 )
 
 
