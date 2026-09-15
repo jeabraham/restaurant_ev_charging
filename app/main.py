@@ -157,8 +157,8 @@ async def find_dining_chargers(request: Request, payload: FindDiningChargersRequ
 
 
 def _require_geoapify_key() -> None:
-    settings = load_settings()
-    if not settings.geoapify_api_key:
+    geo_client: GeoapifyClient | None = getattr(app.state, "geo_client", None)
+    if geo_client is None or not geo_client.is_configured():
         raise ApiError(
             code="GEOAPIFY_NOT_CONFIGURED",
             message="GEOAPIFY_API_KEY is not configured.",

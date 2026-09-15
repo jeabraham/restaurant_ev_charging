@@ -166,6 +166,17 @@ async def test_route_upstream_failure_maps_to_502(test_client):
     assert body["error"]["upstream_status"] == 500
 
 
+@respx.mock
+async def test_route_timeout_maps_to_502(test_client):
+    respx.get("https://api.geoapify.com/v1/routing").mock(side_effect=ReadTimeout("timeout"))
+    response = await test_client.post(
+        "/api/geo/route",
+        json={"waypoints": [{"lat": 51.044733, "lon": -114.071883}, {"lat": 49.282729, "lon": -123.120738}]},
+    )
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "GEOAPIFY_UPSTREAM_TIMEOUT"
+
+
 async def test_geo_endpoints_fail_when_geoapify_key_missing(test_client_without_geo_key):
     geocode_response = await test_client_without_geo_key.get(
         "/api/geo/geocode", params={"query": "Calgary, Alberta"}

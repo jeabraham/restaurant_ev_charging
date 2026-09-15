@@ -157,12 +157,16 @@ All geo endpoint errors use:
   "error": {
     "code": "ERROR_CODE",
     "message": "Human-readable message",
-    "details": []
+    "details": [],
+    "upstream_status": 503
   }
 }
 ```
 
-Validation failures return `400`. Upstream Geoapify failures/timeouts return `502`.
+`details` and `upstream_status` are optional and appear when applicable.
+Validation failures return `400`.
+Upstream Geoapify HTTP failures/timeouts return `502`.
+Missing `GEOAPIFY_API_KEY` returns `500` with code `GEOAPIFY_NOT_CONFIGURED`.
 
 ## AI agent (Gemini)
 
