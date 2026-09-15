@@ -141,6 +141,35 @@ async def test_route_success_normalized(test_client):
     assert route.calls[0].request.url.params["details"] == "true"
 
 
+@respx.mock
+async def test_route_non_default_mode_propagates(test_client):
+    route = respx.get("https://api.geoapify.com/v1/routing").mock(
+        return_value=Response(
+            200,
+            json={
+                "features": [
+                    {
+                        "geometry": {"type": "LineString", "coordinates": [[-114.071883, 51.044733], [-114.07, 51.05]]},
+                        "properties": {"distance": 900.0, "time": 650.0, "legs": []},
+                    }
+                ]
+            },
+        )
+    )
+    response = await test_client.post(
+        "/api/geo/route",
+        json={
+            "waypoints": [{"lat": 51.044733, "lon": -114.071883}, {"lat": 51.05, "lon": -114.07}],
+            "mode": "walk",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "walk"
+    assert route.called
+    assert route.calls[0].request.url.params["mode"] == "walk"
+
+
 async def test_route_validation_invalid_payload(test_client):
     response = await test_client.post(
         "/api/geo/route",
