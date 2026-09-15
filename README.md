@@ -22,7 +22,7 @@ A FastAPI service and interactive AI agent that finds restaurants within walking
 ## Setup
 
 ```bash
-cp .env.example setup.env
+cp setup_example.env setup.env
 # Edit setup.env and fill in your API keys
 ```
 
@@ -107,7 +107,7 @@ Sample response:
 Body fields:
 - `waypoints` (required): at least two `{ "lat", "lon" }` points
 - `mode` (optional, default `drive`)
-- `details` (optional, default `true`)
+- `details` (optional, default `true`; when `false`, `legs`/`steps` may be empty)
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/geo/route" \
@@ -157,12 +157,17 @@ All geo endpoint errors use:
   "error": {
     "code": "ERROR_CODE",
     "message": "Human-readable message",
-    "details": []
+    "details": { "field": "context" },
+    "upstream_status": 503
   }
 }
 ```
 
-Validation failures return `400`. Upstream Geoapify failures/timeouts return `502`.
+`details` is optional arbitrary JSON data, and `upstream_status` is optional.
+Either key may be omitted when not applicable.
+Validation failures return `400`.
+Upstream Geoapify HTTP failures/timeouts return `502`.
+Missing `GEOAPIFY_API_KEY` returns `500` with code `GEOAPIFY_NOT_CONFIGURED`.
 
 ## AI agent (Gemini)
 

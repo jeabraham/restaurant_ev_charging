@@ -14,6 +14,9 @@ class GeoapifyClient:
         self._http_client = http_client
         self._api_key = api_key
 
+    def is_configured(self) -> bool:
+        return bool(self._api_key)
+
     async def nearby_food_places(
         self,
         latitude: float,
