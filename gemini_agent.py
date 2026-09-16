@@ -190,6 +190,10 @@ def main() -> None:
     if not gemini_key:
         sys.exit("GEMINI_API_KEY is not set. Add it to setup.env and restart.")
 
+    geoapify_key = os.getenv("GEOAPIFY_API_KEY", "")
+    if not geoapify_key:
+        sys.exit("GEOAPIFY_API_KEY is not set. Add it to setup.env and restart.")
+
     client = genai.Client(api_key=gemini_key)
     system_instruction = _INSTRUCTIONS_PATH.read_text()
     chat = client.chats.create(
