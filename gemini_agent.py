@@ -45,6 +45,39 @@ _TOOLS = types.Tool(
             ),
         ),
         types.FunctionDeclaration(
+            name="route_waypoints",
+            description=(
+                "Calculate route summary (distance, duration, geometry, and optional legs/steps) "
+                "between two or more waypoints. Use after geocoding place names."
+            ),
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "waypoints": types.Schema(
+                        type=types.Type.ARRAY,
+                        description="At least two waypoints in travel order.",
+                        items=types.Schema(
+                            type=types.Type.OBJECT,
+                            properties={
+                                "lat": types.Schema(type=types.Type.NUMBER, description="Latitude (-90 to 90)."),
+                                "lon": types.Schema(type=types.Type.NUMBER, description="Longitude (-180 to 180)."),
+                            },
+                            required=["lat", "lon"],
+                        ),
+                    ),
+                    "mode": types.Schema(
+                        type=types.Type.STRING,
+                        description="Travel mode (default: drive).",
+                    ),
+                    "details": types.Schema(
+                        type=types.Type.BOOLEAN,
+                        description="Include leg/step details (default: true).",
+                    ),
+                },
+                required=["waypoints"],
+            ),
+        ),
+        types.FunctionDeclaration(
             name="find_dining_chargers",
             description=(
                 "Find restaurants located near DC fast EV chargers at a given location. "
@@ -102,25 +135,41 @@ _TOOLS = types.Tool(
 )
 
 
-def _geocode(address: str, geoapify_key: str) -> dict:
+def _geocode(address: str) -> dict:
     try:
-        response = httpx.get(
-            "https://api.geoapify.com/v1/geocode/search",
-            params={"text": address, "format": "json", "limit": 1, "apiKey": geoapify_key},
-            timeout=20,
-        )
-        response.raise_for_status()
+        response = httpx.get(f"{API_URL}/api/geo/geocode", params={"query": address, "limit": 1}, timeout=20)
+        if response.status_code >= 400:
+            return {"error": response.text}
         results = response.json().get("results", [])
         if not results:
             return {"error": f"No results found for address: {address!r}"}
         result = results[0]
+        latitude = result.get("coordinates", {}).get("lat")
+        longitude = result.get("coordinates", {}).get("lon")
+        if latitude is None or longitude is None:
+            return {"error": f"Geocoding returned no coordinates for address: {address!r}"}
         return {
-            "latitude": result["lat"],
-            "longitude": result["lon"],
+            "latitude": latitude,
+            "longitude": longitude,
             "formatted_address": result.get("formatted", address),
         }
     except httpx.HTTPError as e:
         return {"error": f"Geocoding service error: {e}"}
+
+
+def _route_waypoints(args: dict) -> dict:
+    payload = {
+        "waypoints": args["waypoints"],
+        "mode": args.get("mode", "drive"),
+        "details": args.get("details", True),
+    }
+    try:
+        response = httpx.post(f"{API_URL}/api/geo/route", json=payload, timeout=30)
+        if response.status_code >= 400:
+            return {"error": response.text}
+        return response.json()
+    except httpx.HTTPError as e:
+        return {"error": f"Routing service error: {e}"}
 
 
 def _find_dining_chargers(args: dict) -> dict:
@@ -187,10 +236,15 @@ def main() -> None:
 
                 if fc.name == "geocode_address":
                     print(f"  [→ geocode_address({json.dumps(args)})]")
-                    result = _geocode(args["address"], geoapify_key)
-                else:
+                    result = _geocode(args["address"])
+                elif fc.name == "route_waypoints":
+                    print(f"  [→ route_waypoints({json.dumps(args)})]")
+                    result = _route_waypoints(args)
+                elif fc.name == "find_dining_chargers":
                     print(f"  [→ find_dining_chargers({json.dumps(args)})]")
                     result = _find_dining_chargers(args)
+                else:
+                    result = {"error": f"Unknown tool requested: {fc.name}"}
 
                 response = chat.send_message(
                     types.Part.from_function_response(name=fc.name, response=result)

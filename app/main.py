@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
+from typing import Any
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
@@ -19,7 +20,7 @@ from app.clients.openchargemap import OpenChargeMapClient
 from app.clients.yelp import YelpClient
 from app.config import load_settings
 from app.errors import ApiError
-from app.schemas import FindDiningChargersRequest
+from app.schemas import FindDiningChargersRequest, GeoRouteRequest
 from app.services.reviews import GooglePlacesReviewProvider, YelpReviewProvider
 from app.services.search import DiningChargerService
 
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
         retrying_client,
         settings.geoapify_api_key,
     )
+    app.state.geo_client = geo_client
     google_client = None
     if settings.google_places_api_key:
         google_client = GooglePlacesClient(retrying_client, settings.google_places_api_key)
@@ -96,6 +98,8 @@ async def rate_limit_handler(_: Request, exc: RateLimitExceeded) -> JSONResponse
 @app.exception_handler(ApiError)
 async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
     payload = {"code": exc.code, "message": exc.message}
+    if hasattr(exc, "details") and getattr(exc, "details") is not None:
+        payload["details"] = getattr(exc, "details")
     if exc.upstream_status is not None:
         payload["upstream_status"] = exc.upstream_status
     return JSONResponse(status_code=exc.status_code, content={"error": payload})
@@ -150,3 +154,166 @@ async def generic_error_handler(_: Request, exc: Exception) -> JSONResponse:
 async def find_dining_chargers(request: Request, payload: FindDiningChargersRequest) -> dict:
     service: DiningChargerService = app.state.dining_service
     return await service.find(payload)
+
+
+def _require_geoapify_key() -> None:
+    geo_client: GeoapifyClient | None = getattr(app.state, "geo_client", None)
+    if geo_client is None or not geo_client.is_configured():
+        raise ApiError(
+            code="GEOAPIFY_NOT_CONFIGURED",
+            message="GEOAPIFY_API_KEY is not configured.",
+            status_code=500,
+        )
+
+
+def _to_float(value: Any) -> float | None:
+    if isinstance(value, (int, float, str)):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _to_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
+    if isinstance(value, str):
+        try:
+            parsed = float(value)
+            return int(parsed) if parsed.is_integer() else None
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _normalize_geocode_result(item: dict[str, Any]) -> dict[str, Any]:
+    rank_data = item.get("rank")
+    rank = rank_data if isinstance(rank_data, dict) else None
+    return {
+        "formatted": item.get("formatted"),
+        "coordinates": {
+            "lat": _to_float(item.get("lat")),
+            "lon": _to_float(item.get("lon")),
+        },
+        "components": {
+            "country": item.get("country"),
+            "state": item.get("state"),
+            "city": item.get("city"),
+            "postcode": item.get("postcode"),
+        },
+        "provider": {
+            "place_id": item.get("place_id"),
+            "result_type": item.get("result_type"),
+            "rank": rank,
+        },
+    }
+
+
+def _normalize_route_response(raw: dict[str, Any], mode: str) -> dict[str, Any] | None:
+    features = raw.get("features")
+    if not isinstance(features, list) or not features:
+        return None
+    first = features[0]
+    if not isinstance(first, dict):
+        return None
+    if not isinstance(first.get("properties"), dict):
+        return None
+    properties = first.get("properties")
+    total_distance_m = _to_float(properties.get("distance"))
+    total_duration_s = _to_float(properties.get("time"))
+    if total_distance_m is None or total_duration_s is None:
+        return None
+    legs_raw = properties.get("legs")
+    legs: list[dict[str, Any]] = []
+    if isinstance(legs_raw, list):
+        for leg in legs_raw:
+            if not isinstance(leg, dict):
+                continue
+            steps_raw = leg.get("steps")
+            steps: list[dict[str, Any]] = []
+            if isinstance(steps_raw, list):
+                for step in steps_raw:
+                    if not isinstance(step, dict):
+                        continue
+                    steps.append(
+                        {
+                            "instruction": step.get("instruction"),
+                            "distance_m": _to_float(step.get("distance")),
+                            "duration_s": _to_float(step.get("time")),
+                            "from_index": _to_int(step.get("from_index")),
+                            "to_index": _to_int(step.get("to_index")),
+                        }
+                    )
+            legs.append(
+                {
+                    "distance_m": _to_float(leg.get("distance")),
+                    "duration_s": _to_float(leg.get("time")),
+                    "steps": steps,
+                }
+            )
+    return {
+        "mode": mode,
+        "total_distance_m": total_distance_m,
+        "total_duration_s": total_duration_s,
+        "geometry": first.get("geometry"),
+        "polyline": properties.get("polyline"),
+        "legs": legs,
+    }
+
+
+@app.get("/api/geo/geocode")
+async def geo_geocode(
+    query: str = Query(..., min_length=1),
+    limit: int = Query(default=5, ge=1, le=10),
+    lang: str | None = Query(default=None, min_length=2, max_length=10),
+    filter: str | None = Query(default=None, min_length=1),
+    bias: str | None = Query(default=None, min_length=1),
+) -> dict[str, Any]:
+    _require_geoapify_key()
+    geo_client: GeoapifyClient = app.state.geo_client
+    raw = await geo_client.geocode(
+        query=query,
+        limit=limit,
+        lang=lang,
+        filter_value=filter,
+        bias=bias,
+    )
+    features = raw.get("features")
+    normalized_results: list[dict[str, Any]] = []
+    if isinstance(features, list):
+        for feature in features:
+            if not isinstance(feature, dict):
+                continue
+            properties = feature.get("properties")
+            if isinstance(properties, dict):
+                normalized_results.append(_normalize_geocode_result(properties))
+    return {
+        "query": query,
+        "total": len(normalized_results),
+        "results": normalized_results,
+    }
+
+
+@app.post("/api/geo/route")
+async def geo_route(payload: GeoRouteRequest) -> dict[str, Any]:
+    _require_geoapify_key()
+    geo_client: GeoapifyClient = app.state.geo_client
+    waypoints = "|".join(f"{point.lat},{point.lon}" for point in payload.waypoints)
+    raw = await geo_client.route(
+        waypoints=waypoints,
+        mode=payload.mode,
+        details=payload.details,
+    )
+    normalized = _normalize_route_response(raw, payload.mode)
+    if normalized is None:
+        raise ApiError(
+            code="GEOAPIFY_UPSTREAM_ERROR",
+            message="Geoapify returned no route data.",
+            status_code=502,
+        )
+    return normalized

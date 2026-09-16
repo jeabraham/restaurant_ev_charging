@@ -263,9 +263,10 @@ async def test_canmore_both_sources_no_duplicate_restaurants(
 async def test_canmore_google_only_result_count_is_reasonable(
     service_google_only, canmore_request
 ):
-    """Google-only search returns a sane number of results (not zero, not thousands)."""
+    """Google-only search returns a sane number of results, allowing protected extras."""
     data = await service_google_only.find(canmore_request)
     count = len(data["results"])
-    assert 1 <= count <= canmore_request.max_results, (
+    protected_top_rated = data["diagnostics"].get("protected_top_rated", 0)
+    assert 1 <= count <= canmore_request.max_results + protected_top_rated, (
         f"Unexpected result count: {count}"
     )

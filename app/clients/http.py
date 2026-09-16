@@ -31,20 +31,75 @@ class RetryingHttpClient:
         params: dict[str, Any],
         headers: dict[str, str] | None,
         service_name: str,
+        timeout_seconds: float | None = None,
+        retries: int | None = None,
+        timeout_error_status_code: int = 504,
+    ) -> Any:
+        return await self.request_json(
+            method="GET",
+            url=url,
+            params=params,
+            headers=headers,
+            service_name=service_name,
+            timeout_seconds=timeout_seconds,
+            retries=retries,
+            timeout_error_status_code=timeout_error_status_code,
+        )
+
+    async def post_json(
+        self,
+        *,
+        url: str,
+        params: dict[str, Any] | None,
+        json_body: dict[str, Any] | None,
+        headers: dict[str, str] | None,
+        service_name: str,
+        timeout_seconds: float | None = None,
+        retries: int | None = None,
+        timeout_error_status_code: int = 504,
+    ) -> Any:
+        return await self.request_json(
+            method="POST",
+            url=url,
+            params=params,
+            json_body=json_body,
+            headers=headers,
+            service_name=service_name,
+            timeout_seconds=timeout_seconds,
+            retries=retries,
+            timeout_error_status_code=timeout_error_status_code,
+        )
+
+    async def request_json(
+        self,
+        *,
+        method: str,
+        url: str,
+        params: dict[str, Any] | None,
+        headers: dict[str, str] | None,
+        service_name: str,
+        json_body: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
+        retries: int | None = None,
+        timeout_error_status_code: int = 504,
     ) -> Any:
         last_response: httpx.Response | None = None
+        retry_count = self._retries if retries is None else max(0, retries)
+        timeout = self._timeout_seconds if timeout_seconds is None else timeout_seconds
 
-        for attempt in range(self._retries + 1):
+        for attempt in range(retry_count + 1):
             try:
-                response = await self._client.get(
+                response = await self._client.request(
+                    method,
                     url,
                     params=params,
+                    json=json_body,
                     headers=headers,
-                    timeout=self._timeout_seconds,
+                    timeout=timeout,
                 )
                 last_response = response
 
-                if response.status_code in (429, 500, 502, 503, 504) and attempt < self._retries:
+                if response.status_code in (429, 500, 502, 503, 504) and attempt < retry_count:
                     wait_seconds = self._retry_delay(response, attempt)
                     logger.info(
                         "Retrying upstream request",
@@ -68,16 +123,16 @@ class RetryingHttpClient:
 
                 return response.json()
             except httpx.TimeoutException as exc:
-                if attempt < self._retries:
+                if attempt < retry_count:
                     await asyncio.sleep(2**attempt)
                     continue
                 raise UpstreamTimeoutError(
                     code=f"{service_name.upper()}_UPSTREAM_TIMEOUT",
                     message=f"{service_name} request timed out.",
-                    status_code=504,
+                    status_code=timeout_error_status_code,
                 ) from exc
             except httpx.HTTPError as exc:
-                if attempt < self._retries:
+                if attempt < retry_count:
                     await asyncio.sleep(2**attempt)
                     continue
                 raise UpstreamHttpError(
@@ -103,7 +158,13 @@ class RetryingHttpClient:
                 if retry_after.isdigit():
                     return min(float(retry_after), 30.0)
                 retry_at = parsedate_to_datetime(retry_after)
-                return max(0.0, min((retry_at - parsedate_to_datetime(response.headers.get("Date", ""))).total_seconds(), 30.0))
+                return max(
+                    0.0,
+                    min(
+                        (retry_at - parsedate_to_datetime(response.headers.get("Date", ""))).total_seconds(),
+                        30.0,
+                    ),
+                )
             except Exception:
                 return min(float(2**attempt), 10.0)
         return min(float(2**attempt), 10.0)

@@ -58,6 +58,117 @@ curl -X POST "http://127.0.0.1:8000/find-dining-chargers" \
   }'
 ```
 
+## Geoapify pass-through endpoints
+
+### Geocode
+
+`GET /api/geo/geocode`
+
+Query parameters:
+- `query` (required): free-form place text
+- `limit` (optional, default `5`, max `10`)
+- `lang` (optional)
+- `filter` (optional)
+- `bias` (optional)
+
+```bash
+curl "http://127.0.0.1:8000/api/geo/geocode?query=Berlin&limit=3&lang=en"
+```
+
+Sample response:
+```json
+{
+  "query": "Berlin",
+  "total": 1,
+  "results": [
+    {
+      "formatted": "Berlin, Germany",
+      "coordinates": { "lat": 52.517037, "lon": 13.38886 },
+      "components": {
+        "country": "Germany",
+        "state": "Berlin",
+        "city": "Berlin",
+        "postcode": "10117"
+      },
+      "provider": {
+        "place_id": "abc-123",
+        "result_type": "city",
+        "rank": { "confidence": 1 }
+      }
+    }
+  ]
+}
+```
+
+### Route
+
+`POST /api/geo/route`
+
+Body fields:
+- `waypoints` (required): at least two `{ "lat", "lon" }` points
+- `mode` (optional, default `drive`)
+- `details` (optional, default `true`; when `false`, `legs`/`steps` may be empty)
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/geo/route" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "waypoints": [
+      { "lat": 43.651, "lon": -79.383 },
+      { "lat": 43.671, "lon": -79.4 }
+    ],
+    "mode": "drive",
+    "details": true
+  }'
+```
+
+Sample response:
+```json
+{
+  "mode": "drive",
+  "total_distance_m": 2510.5,
+  "total_duration_s": 440.2,
+  "geometry": { "type": "LineString", "coordinates": [[-79.38, 43.65], [-79.4, 43.67]] },
+  "polyline": "abc123",
+  "legs": [
+    {
+      "distance_m": 2510.5,
+      "duration_s": 440.2,
+      "steps": [
+        {
+          "instruction": "Head north",
+          "distance_m": 120.0,
+          "duration_s": 35.5,
+          "from_index": 0,
+          "to_index": 1
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Error format
+
+All geo endpoint errors use:
+
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable message",
+    "details": { "field": "context" },
+    "upstream_status": 503
+  }
+}
+```
+
+`details` is optional arbitrary JSON data, and `upstream_status` is optional.
+Either key may be omitted when not applicable.
+Validation failures return `400`.
+Upstream Geoapify HTTP failures/timeouts return `502`.
+Missing `GEOAPIFY_API_KEY` returns `500` with code `GEOAPIFY_NOT_CONFIGURED`.
+
 ## AI agent (Gemini)
 
 An interactive CLI agent that lets you plan EV charging stops in natural language. It geocodes locations, calls the API, and recommends restaurants near chargers.
