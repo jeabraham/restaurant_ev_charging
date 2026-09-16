@@ -37,7 +37,7 @@ def _load_setup_env() -> dict[str, str]:
 
 
 _env = _load_setup_env()
-_geo_key: str = _env.get("GEOAPIFY_API_KEY") or os.getenv("GEOAPIFY_API_KEY", "")
+_geo_key: str = os.getenv("GEOAPIFY_API_KEY", "") or _env.get("GEOAPIFY_API_KEY", "")
 _real_geo = bool(_geo_key) and _geo_key not in {_PLACEHOLDER_GEO, *_CONFTEST_SENTINELS}
 
 pytestmark = pytest.mark.skipif(
