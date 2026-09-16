@@ -39,6 +39,30 @@ def test_geocode_address_uses_local_geo_endpoint(monkeypatch):
 
 
 @respx.mock
+def test_geocode_address_errors_when_coordinates_missing(monkeypatch):
+    monkeypatch.setattr(gemini_agent, "API_URL", "http://testserver")
+    respx.get("http://testserver/api/geo/geocode").mock(
+        return_value=Response(
+            200,
+            json={
+                "query": "Calgary, Alberta",
+                "total": 1,
+                "results": [
+                    {
+                        "formatted": "Calgary, AB, Canada",
+                        "coordinates": {"lat": None, "lon": None},
+                    }
+                ],
+            },
+        )
+    )
+
+    result = gemini_agent._geocode("Calgary, Alberta")
+    assert "error" in result
+    assert "no coordinates" in result["error"].lower()
+
+
+@respx.mock
 def test_route_waypoints_uses_local_route_endpoint(monkeypatch):
     monkeypatch.setattr(gemini_agent, "API_URL", "http://testserver")
     route = respx.post("http://testserver/api/geo/route").mock(

@@ -144,9 +144,13 @@ def _geocode(address: str) -> dict:
         if not results:
             return {"error": f"No results found for address: {address!r}"}
         result = results[0]
+        latitude = result.get("coordinates", {}).get("lat")
+        longitude = result.get("coordinates", {}).get("lon")
+        if latitude is None or longitude is None:
+            return {"error": f"Geocoding returned no coordinates for address: {address!r}"}
         return {
-            "latitude": result.get("coordinates", {}).get("lat"),
-            "longitude": result.get("coordinates", {}).get("lon"),
+            "latitude": latitude,
+            "longitude": longitude,
             "formatted_address": result.get("formatted", address),
         }
     except httpx.HTTPError as e:
