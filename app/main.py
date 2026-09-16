@@ -221,7 +221,9 @@ def _normalize_route_response(raw: dict[str, Any], mode: str) -> dict[str, Any] 
     first = features[0]
     if not isinstance(first, dict):
         return None
-    properties = first.get("properties") if isinstance(first.get("properties"), dict) else {}
+    if not isinstance(first.get("properties"), dict):
+        return None
+    properties = first.get("properties")
     legs_raw = properties.get("legs")
     legs: list[dict[str, Any]] = []
     if isinstance(legs_raw, list):

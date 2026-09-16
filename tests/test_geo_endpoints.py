@@ -356,6 +356,21 @@ async def test_route_malformed_feature_maps_to_502(test_client):
     assert body["error"]["message"] == "Geoapify returned no route data."
 
 
+@respx.mock
+async def test_route_malformed_properties_maps_to_502(test_client):
+    respx.get("https://api.geoapify.com/v1/routing").mock(
+        return_value=Response(200, json={"features": [{"geometry": {"type": "LineString", "coordinates": []}}]})
+    )
+    response = await test_client.post(
+        "/api/geo/route",
+        json={"waypoints": [{"lat": 51.044733, "lon": -114.071883}, {"lat": 49.282729, "lon": -123.120738}]},
+    )
+    assert response.status_code == 502
+    body = response.json()
+    assert body["error"]["code"] == "GEOAPIFY_UPSTREAM_ERROR"
+    assert body["error"]["message"] == "Geoapify returned no route data."
+
+
 async def test_geo_endpoints_fail_when_geoapify_key_missing(test_client_without_geo_key):
     geocode_response = await test_client_without_geo_key.get(
         "/api/geo/geocode", params={"query": "Calgary, Alberta"}

@@ -240,9 +240,11 @@ def main() -> None:
                 elif fc.name == "route_waypoints":
                     print(f"  [→ route_waypoints({json.dumps(args)})]")
                     result = _route_waypoints(args)
-                else:
+                elif fc.name == "find_dining_chargers":
                     print(f"  [→ find_dining_chargers({json.dumps(args)})]")
                     result = _find_dining_chargers(args)
+                else:
+                    result = {"error": f"Unknown tool requested: {fc.name}"}
 
                 response = chat.send_message(
                     types.Part.from_function_response(name=fc.name, response=result)
