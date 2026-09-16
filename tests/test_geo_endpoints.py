@@ -138,7 +138,33 @@ async def test_route_success_normalized(test_client):
     assert body["legs"][0]["steps"][0]["instruction"] == "Head west"
     assert route.called
     assert route.calls[0].request.url.params["waypoints"] == "51.044733,-114.071883|49.282729,-123.120738"
-    assert route.calls[0].request.url.params["details"] == "true"
+    assert route.calls[0].request.url.params["details"] == "instruction_details"
+
+
+@respx.mock
+async def test_route_omits_details_when_disabled(test_client):
+    route = respx.get("https://api.geoapify.com/v1/routing").mock(
+        return_value=Response(
+            200,
+            json={
+                "features": [
+                    {
+                        "geometry": {"type": "LineString", "coordinates": []},
+                        "properties": {"distance": 900.0, "time": 650.0},
+                    }
+                ]
+            },
+        )
+    )
+    response = await test_client.post(
+        "/api/geo/route",
+        json={
+            "waypoints": [{"lat": 51.044733, "lon": -114.071883}, {"lat": 51.05, "lon": -114.07}],
+            "details": False,
+        },
+    )
+    assert response.status_code == 200
+    assert "details" not in route.calls[0].request.url.params
 
 
 @respx.mock

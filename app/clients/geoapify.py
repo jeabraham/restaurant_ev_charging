@@ -83,9 +83,10 @@ class GeoapifyClient:
         params: dict[str, Any] = {
             "waypoints": waypoints,
             "mode": mode,
-            "details": "true" if details else "false",
             "apiKey": self._api_key,
         }
+        if details:
+            params["details"] = "instruction_details"
         response = await self._http_client.get_json(
             url=self.routing_base_url,
             params=params,
