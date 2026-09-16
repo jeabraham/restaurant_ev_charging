@@ -224,6 +224,10 @@ def _normalize_route_response(raw: dict[str, Any], mode: str) -> dict[str, Any] 
     if not isinstance(first.get("properties"), dict):
         return None
     properties = first.get("properties")
+    total_distance_m = _to_float(properties.get("distance"))
+    total_duration_s = _to_float(properties.get("time"))
+    if total_distance_m is None or total_duration_s is None:
+        return None
     legs_raw = properties.get("legs")
     legs: list[dict[str, Any]] = []
     if isinstance(legs_raw, list):
@@ -254,8 +258,8 @@ def _normalize_route_response(raw: dict[str, Any], mode: str) -> dict[str, Any] 
             )
     return {
         "mode": mode,
-        "total_distance_m": _to_float(properties.get("distance")),
-        "total_duration_s": _to_float(properties.get("time")),
+        "total_distance_m": total_distance_m,
+        "total_duration_s": total_duration_s,
         "geometry": first.get("geometry"),
         "polyline": properties.get("polyline"),
         "legs": legs,
