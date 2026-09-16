@@ -62,7 +62,10 @@ async def test_geocode_success_normalized(test_client):
 async def test_geocode_validation_limit_capped(test_client):
     response = await test_client.get("/api/geo/geocode", params={"query": "Calgary, Alberta", "limit": 11})
     assert response.status_code == 400
-    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+    body = response.json()
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert body["error"]["message"] == "Invalid request payload."
+    assert isinstance(body["error"]["details"], list)
 
 
 @respx.mock
@@ -294,7 +297,10 @@ async def test_route_validation_invalid_payload(test_client):
         json={"waypoints": [{"lat": 43.651, "lon": -79.383}]},
     )
     assert response.status_code == 400
-    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+    body = response.json()
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert body["error"]["message"] == "Invalid request payload."
+    assert isinstance(body["error"]["details"], list)
 
 
 @respx.mock
@@ -324,6 +330,19 @@ async def test_route_timeout_maps_to_502(test_client):
     assert response.json()["error"]["code"] == "GEOAPIFY_UPSTREAM_TIMEOUT"
 
 
+@respx.mock
+async def test_route_no_features_maps_to_502(test_client):
+    respx.get("https://api.geoapify.com/v1/routing").mock(return_value=Response(200, json={"features": []}))
+    response = await test_client.post(
+        "/api/geo/route",
+        json={"waypoints": [{"lat": 51.044733, "lon": -114.071883}, {"lat": 49.282729, "lon": -123.120738}]},
+    )
+    assert response.status_code == 502
+    body = response.json()
+    assert body["error"]["code"] == "GEOAPIFY_UPSTREAM_ERROR"
+    assert body["error"]["message"] == "Geoapify returned no route data."
+
+
 async def test_geo_endpoints_fail_when_geoapify_key_missing(test_client_without_geo_key):
     geocode_response = await test_client_without_geo_key.get(
         "/api/geo/geocode", params={"query": "Calgary, Alberta"}
@@ -333,6 +352,10 @@ async def test_geo_endpoints_fail_when_geoapify_key_missing(test_client_without_
         json={"waypoints": [{"lat": 51.044733, "lon": -114.071883}, {"lat": 49.282729, "lon": -123.120738}]},
     )
     assert geocode_response.status_code == 500
-    assert geocode_response.json()["error"]["code"] == "GEOAPIFY_NOT_CONFIGURED"
+    geocode_body = geocode_response.json()
+    assert geocode_body["error"]["code"] == "GEOAPIFY_NOT_CONFIGURED"
+    assert geocode_body["error"]["message"] == "GEOAPIFY_API_KEY is not configured."
     assert route_response.status_code == 500
-    assert route_response.json()["error"]["code"] == "GEOAPIFY_NOT_CONFIGURED"
+    route_body = route_response.json()
+    assert route_body["error"]["code"] == "GEOAPIFY_NOT_CONFIGURED"
+    assert route_body["error"]["message"] == "GEOAPIFY_API_KEY is not configured."

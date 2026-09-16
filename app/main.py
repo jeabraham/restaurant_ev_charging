@@ -214,17 +214,10 @@ def _normalize_geocode_result(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _normalize_route_response(raw: dict[str, Any], mode: str) -> dict[str, Any]:
+def _normalize_route_response(raw: dict[str, Any], mode: str) -> dict[str, Any] | None:
     features = raw.get("features")
     if not isinstance(features, list) or not features:
-        return {
-            "mode": mode,
-            "total_distance_m": None,
-            "total_duration_s": None,
-            "geometry": None,
-            "polyline": None,
-            "legs": [],
-        }
+        return None
     first = features[0] if isinstance(features[0], dict) else {}
     properties = first.get("properties") if isinstance(first.get("properties"), dict) else {}
     legs_raw = properties.get("legs")
@@ -308,4 +301,11 @@ async def geo_route(payload: GeoRouteRequest) -> dict[str, Any]:
         mode=payload.mode,
         details=payload.details,
     )
-    return _normalize_route_response(raw, payload.mode)
+    normalized = _normalize_route_response(raw, payload.mode)
+    if normalized is None:
+        raise ApiError(
+            code="GEOAPIFY_UPSTREAM_ERROR",
+            message="Geoapify returned no route data.",
+            status_code=502,
+        )
+    return normalized
