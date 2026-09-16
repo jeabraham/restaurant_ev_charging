@@ -14,8 +14,8 @@ The user drives a Ford Mustang Mach-E with a NACS adapter, so compatible CCS cha
 
 **Step 0 — Use API geospatial endpoints first for location/route prep.**
 When you need place-name geocoding or route distance/duration, call:
-- `GET /api/geo/geocode` first
-- `POST /api/geo/route` first
+- `geocode_address` (backed by `GET /api/geo/geocode`) first
+- `route_waypoints` (backed by `POST /api/geo/route`) first
 Only fall back to public `/web` geocoding/routing sources if these API endpoints fail.
 
 **Step 1 — Confirm the route first.**
